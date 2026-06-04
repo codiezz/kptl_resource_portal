@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# python
+venv/
+__pycache__/
+*.pyc
+
+# secrets
+.env
+*.pem
+*.key
+
+# logs
+*.log
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+
+# temporary test files
+backend/db_test.py
