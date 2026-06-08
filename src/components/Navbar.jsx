@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import ProtectedLink from "./ProtectedLink";
 import LoginModal from "./LoginModal";
 import image from "./image/images.png";
+import { clusterStatusPath } from "../config/clusters";
 
 export default function Navbar() {
   const { user, role, logout } =
@@ -198,7 +199,7 @@ export default function Navbar() {
                 </ProtectedLink>
 
                 <ProtectedLink
-                  to="/cluster-status"
+                  to={clusterStatusPath()}
                   style={
                     styles.link
                   }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   PieChart,
@@ -5,34 +6,21 @@ import {
   Cell,
   ResponsiveContainer,
 } from "recharts";
+import { getClusterHealth } from "../api/clusters";
 
-function DonutChart({
-  title,
-  value,
-}) {
+function DonutChart({ title, value }) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+
   const data = [
-    {
-      name: "Used",
-      value,
-    },
-    {
-      name: "Free",
-      value: 100 - value,
-    },
+    { name: "Used", value: safeValue },
+    { name: "Free", value: Math.max(0, 100 - safeValue) },
   ];
 
   return (
     <div style={styles.chartCard}>
-      <h3 style={styles.chartTitle}>
-        {title}
-      </h3>
+      <h3 style={styles.chartTitle}>{title}</h3>
 
-      <div
-        style={{
-          width: "180px",
-          height: "180px",
-        }}
-      >
+      <div style={{ width: "180px", height: "180px" }}>
         <ResponsiveContainer>
           <PieChart>
             <Pie
@@ -55,7 +43,7 @@ function DonutChart({
               fontWeight="700"
               fill="#111"
             >
-              {value}%
+              {safeValue.toFixed(1)}%
             </text>
           </PieChart>
         </ResponsiveContainer>
@@ -64,136 +52,145 @@ function DonutChart({
   );
 }
 
-export default function ClusterStatus() {
-  const { clusterId } =
-    useParams();
+function formatClusterName(name) {
+  return name
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-  const mockStats = {
-    cpu: "68%",
-    gpu: "41%",
-    ram: "124 GB / 192 GB",
-    temperature: "54°C",
-    nodes: "18 / 24 Active",
-    jobs: "142 Running",
-    queue: "31 Pending",
-    status: "Online",
-  };
+function formatPeriod(iso) {
+  if (!iso) return "—";
+  return iso.split("T")[0];
+}
+
+export default function ClusterStatus() {
+  const { clusterId } = useParams();
+  const [health, setHealth] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHealth() {
+      setLoading(true);
+      setError("");
+
+      const { ok, data } = await getClusterHealth(clusterId);
+
+      if (cancelled) return;
+
+      if (ok) {
+        setHealth(data);
+      } else {
+        setHealth(null);
+        setError(data?.error || "Failed to load cluster health");
+      }
+
+      setLoading(false);
+    }
+
+    loadHealth();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clusterId]);
+
+  const metrics = health?.metrics ?? {};
 
   return (
     <section style={styles.page}>
       <div style={styles.container}>
-        <span style={styles.badge}>
-          Live Status
-        </span>
+        <span style={styles.badge}>Live Status</span>
 
         <h1 style={styles.heading}>
-          {formatClusterName(
-            clusterId
-          )}
+          {health?.cluster
+            ? formatClusterName(health.cluster)
+            : formatClusterName(clusterId)}
         </h1>
 
         <p style={styles.subheading}>
-          Real-time cluster health
-          and system monitoring.
+          Slurm cluster utilization from{" "}
+          <code>sreport cluster Utilization</code>.
         </p>
 
-        <div style={styles.dashboardLayout}>
+        {health?.period && (
+          <p style={styles.period}>
+            Period: {formatPeriod(health.period.start)} —{" "}
+            {formatPeriod(health.period.end)}
+          </p>
+        )}
 
-  {/* LEFT */}
-  <div style={styles.infoPanel}>
+        {loading && (
+          <p style={styles.message}>Loading cluster metrics…</p>
+        )}
 
-    <div style={styles.infoRow}>
-      <span>Status</span>
-      <strong>Online</strong>
-    </div>
+        {error && !loading && (
+          <div style={styles.errorBanner}>{error}</div>
+        )}
 
-    <div style={styles.infoRow}>
-      <span>CPU Usage</span>
-      <strong>68%</strong>
-    </div>
+        {!loading && !error && health && (
+          <div style={styles.dashboardLayout}>
+            <div style={styles.infoPanel}>
+              <InfoRow label="Status" value="Online" />
+              <InfoRow
+                label="Allocated"
+                value={`${metrics.allocated?.toFixed(1) ?? "—"}%`}
+              />
+              <InfoRow
+                label="Idle"
+                value={`${metrics.idle?.toFixed(1) ?? "—"}%`}
+              />
+              <InfoRow
+                label="Down"
+                value={`${metrics.down?.toFixed(1) ?? "—"}%`}
+              />
+              <InfoRow
+                label="Planned Down"
+                value={`${metrics.planned_down?.toFixed(1) ?? "—"}%`}
+              />
+              <InfoRow
+                label="Planned"
+                value={`${metrics.planned?.toFixed(1) ?? "—"}%`}
+              />
+              <InfoRow
+                label="Reported"
+                value={`${metrics.reported?.toFixed(1) ?? "—"}%`}
+              />
+            </div>
 
-    <div style={styles.infoRow}>
-      <span>GPU Usage</span>
-      <strong>41%</strong>
-    </div>
-
-    <div style={styles.infoRow}>
-      <span>RAM Usage</span>
-      <strong>124 GB / 192 GB</strong>
-    </div>
-
-    <div style={styles.infoRow}>
-      <span>Temperature</span>
-      <strong>54°C</strong>
-    </div>
-
-    <div style={styles.infoRow}>
-      <span>Active Nodes</span>
-      <strong>18 / 24</strong>
-    </div>
-
-    <div style={styles.infoRow}>
-      <span>Running Jobs</span>
-      <strong>142 Running</strong>
-    </div>
-
-    <div style={styles.infoRow}>
-      <span>Queue</span>
-      <strong>31 Pending</strong>
-    </div>
-
-  </div>
-
-  {/* RIGHT */}
-  <div style={styles.chartGrid}>
-    <DonutChart
-      title="CPU"
-      value={68}
-    />
-
-    <DonutChart
-      title="GPU"
-      value={41}
-    />
-
-    <DonutChart
-      title="RAM"
-      value={74}
-    />
-  </div>
-
-</div>
-        
+            <div style={styles.chartGrid}>
+              <DonutChart title="Allocated" value={metrics.allocated} />
+              <DonutChart title="Idle" value={metrics.idle} />
+              <DonutChart title="Down" value={metrics.down} />
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
-
-
-function formatClusterName(
-  name
-) {
-  return name
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) =>
-      c.toUpperCase()
-    );
+function InfoRow({ label, value }) {
+  return (
+    <div style={styles.infoRow}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
 }
 
 const styles = {
   page: {
-  minHeight: "100vh",
-  background:
-    "linear-gradient(to bottom,#fafafa,#f6f7fb)",
-  padding: "40px 30px 90px",
-},
-
+    minHeight: "100vh",
+    background: "linear-gradient(to bottom,#fafafa,#f6f7fb)",
+    padding: "40px 30px 90px",
+  },
   container: {
     maxWidth: "1200px",
     margin: "0 auto",
   },
-
   badge: {
     background: "#ffe5e5",
     color: "#c1121f",
@@ -202,129 +199,82 @@ const styles = {
     fontWeight: "600",
     fontSize: "14px",
   },
-
   heading: {
-  fontSize: "34px",
-  fontWeight: "500",
-
-  marginTop: "10px",
-  marginBottom: "4px",
-
-  lineHeight: "1.15",
-  letterSpacing: "-0.5px",
-
-  maxWidth: "800px",
-},
-  subheading: {
-  color: "#666",
-  marginBottom: "10px",
-  marginTop: "6px",
-  fontSize: "18px",
-},
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns:
-      "repeat(auto-fit, minmax(260px,1fr))",
-    gap: "24px",
-  },
-
-  card: {
-    background: "#ffffff",
-    borderRadius: "24px",
-    padding: "30px",
-    border:
-      "1px solid #ececec",
-    boxShadow:
-      "0 8px 24px rgba(0,0,0,0.04)",
-  },
-
-  cardTitle: {
-    color: "#777",
-    fontSize: "14px",
-  },
-
-  cardValue: {
-    marginTop: "12px",
     fontSize: "34px",
-    color: "#111",
+    fontWeight: "500",
+    marginTop: "10px",
+    marginBottom: "4px",
+    lineHeight: "1.15",
+    letterSpacing: "-0.5px",
+    maxWidth: "800px",
+  },
+  subheading: {
+    color: "#666",
+    marginBottom: "10px",
+    marginTop: "6px",
+    fontSize: "18px",
+  },
+  period: {
+    color: "#888",
+    fontSize: "14px",
+    marginBottom: "20px",
+  },
+  message: {
+    color: "#666",
+    fontSize: "16px",
+    marginTop: "24px",
+  },
+  errorBanner: {
+    marginTop: "24px",
+    background: "#fff1f2",
+    border: "1px solid #fecdd3",
+    color: "#c1121f",
+    borderRadius: "12px",
+    padding: "16px 18px",
+    fontSize: "15px",
+    fontWeight: "500",
+  },
+  dashboardLayout: {
+    display: "flex",
+    gap: "40px",
+    marginTop: "28px",
+    flexWrap: "wrap",
+  },
+  infoPanel: {
+    flex: 1,
+    minWidth: "340px",
+    background: "#fff",
+    borderRadius: "28px",
+    padding: "18px 32px 28px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.04)",
+  },
+  infoRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "18px 0",
+    borderBottom: "1px solid #f1f1f1",
+    fontSize: "17px",
+    color: "#444",
   },
   chartGrid: {
-  display: "flex",
-
-  gap: "22px",
-
-  alignItems: "flex-start",
-
-  justifyContent:
-    "flex-start",
-
-  flexWrap: "nowrap",
-
-  width: "fit-content",
-},
-
-chartCard: {
-  background: "#fff",
-
-  borderRadius: "26px",
-
-  padding: "18px 22px",
-
-  border:
-    "1px solid #ececec",
-
-  boxShadow:
-    "0 8px 24px rgba(0,0,0,0.04)",
-
-  width: "240px",
-
-  height: "280px",
-
-  flexShrink: 0,
-},
-
-chartTitle: {
-  marginBottom: "20px",
-  fontSize: "15px",
-  fontWeight: "550",
-},
-dashboardLayout: {
-  display: "flex",
-  gap: "40px",
-  marginTop: "28px",
-},
-
-infoPanel: {
-  flex: 1,
-  minWidth: "340px",
-  background: "#fff",
-  borderRadius: "28px",
-  padding: "18px 32px 28px",
-  boxShadow:
-      "0 8px 24px rgba(0,0,0,0.04)",
-},
-
-infoRow: {
-  display: "flex",
-  justifyContent:
-    "space-between",
-
-  padding: "18px 0",
-
-  borderBottom:
-    "1px solid #f1f1f1",
-
-  fontSize: "17px",
-
-  color: "#444",
-},
-
-chartGrid: {
-  display: "flex",
-  gap: "24px",
-  flexWrap: "wrap",
-  justifyContent:
-    "center",
-},
+    display: "flex",
+    gap: "24px",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  chartCard: {
+    background: "#fff",
+    borderRadius: "26px",
+    padding: "18px 22px",
+    border: "1px solid #ececec",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.04)",
+    width: "240px",
+    height: "280px",
+    flexShrink: 0,
+  },
+  chartTitle: {
+    marginBottom: "20px",
+    fontSize: "15px",
+    fontWeight: "550",
+  },
 };

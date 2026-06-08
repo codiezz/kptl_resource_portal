@@ -55,6 +55,19 @@ def has_captcha(text: str) -> bool:
     return _CAPTCHA_PATTERN.search(text) is not None
 
 
+def extract_challenge_text(text: str) -> Optional[str]:
+    """
+    Return captcha challenge text for display in the UI.
+
+    Does not solve the captcha — only extracts the challenge block so the
+    user can read it and type the answer manually.
+    """
+    if not has_captcha(text):
+        return None
+
+    return text.strip()
+
+
 # ---------------------------------------------------------------------------
 # Self-test — run this file directly to verify parser works
 # ---------------------------------------------------------------------------

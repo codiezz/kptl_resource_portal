@@ -2,6 +2,7 @@ import {
   BrowserRouter,
   Routes,
   Route,
+  Navigate,
 } from "react-router-dom";
 
 import Home from "./pages/Home";
@@ -21,6 +22,11 @@ import Footer from "./components/Footer";
 
 import ClusterStatus from "./pages/ClusterStatus";
 import ClusterDocs from "./pages/ClusterDocs";
+import {
+  DEFAULT_CLUSTER_ID,
+  clusterDocsPath,
+  clusterStatusPath,
+} from "./config/clusters";
 
 function App() {
   return (
@@ -72,6 +78,27 @@ function App() {
               <RequireAuth>
                 <Support />
               </RequireAuth>
+            }
+          />
+
+          {/* Legacy redirects */}
+          <Route
+            path="/cluster-status"
+            element={
+              <Navigate
+                to={clusterStatusPath(DEFAULT_CLUSTER_ID)}
+                replace
+              />
+            }
+          />
+
+          <Route
+            path="/cluster-docs"
+            element={
+              <Navigate
+                to={clusterDocsPath(DEFAULT_CLUSTER_ID)}
+                replace
+              />
             }
           />
 

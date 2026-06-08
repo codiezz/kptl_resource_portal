@@ -1,133 +1,69 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, send_file
 from flask_cors import CORS
 import os
+import io
 import sys
-sys.path.insert(0, 'ssh_layer')
-from ssh_executor import run_hpc_command, SSHError, SSHAuthError, SSHTimeoutError
-from slurm_parser import parse_cluster_utilization
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'ssh_layer'))
+from pdf_generator import generate_utilization_report
+from ssh_layer.ssh_executor import (
+    run_hpc_command,
+    SSHError,
+    SSHAuthError,
+    SSHTimeoutError,
+)
+from ssh_layer.slurm_parser import parse_cluster_utilization
 
-app = Flask(__name__)
-
-# Secret key for session encryption — change this in production
-app.secret_key = "hpc-portal-secret-key-change-in-prod"
-
-# Session config
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-
-# Allow CORS from the React dev server, with credentials (cookies)
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
-
-# ---------------------------------------------------------------------------
-# Hardcoded users — replace with a database when ready
-# ---------------------------------------------------------------------------
-users = {
-    "admin": {
-        "password": "admin123",
-        "role": "admin",
-    },
-
-    "test": {
-        "password": "test123",
-        "role": "user",
-    },
-}
+import config
+from routes import auth_bp, clusters_bp, ssh_bp
 
 
-# ---------------------------------------------------------------------------
-# POST /api/login
-# Body: { "username": "...", "password": "..." }
-# ---------------------------------------------------------------------------
-@app.route("/api/login", methods=["POST"])
-def login():
-    data = request.json
+def create_app():
+    app = Flask(__name__)
 
-    username = data.get("username")
-    password = data.get("password")
+    app.secret_key = config.SECRET_KEY
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
 
-    user = users.get(username)
+    CORS(app, supports_credentials=True, origins=config.CORS_ORIGINS)
 
-    if (
-        user
-        and user["password"] == password
-    ):
-        session["user"] = username
-        session["role"] = user["role"]
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(clusters_bp)
+    app.register_blueprint(ssh_bp)
 
-        return jsonify({
-            "username": username,
-            "role": user["role"],
-        })
-
-    return jsonify({
-        "error":
-        "Invalid credentials"
-    }), 401
-
-# ---------------------------------------------------------------------------
-# POST /api/logout
-# ---------------------------------------------------------------------------
-@app.route("/api/logout", methods=["POST"])
-def logout():
-    session.clear()
-    return jsonify({"message": "Logged out successfully"}), 200
+    return app
 
 
-# ---------------------------------------------------------------------------
-# GET /api/auth-check
-# Returns the logged-in user or 401 if not authenticated
-# ---------------------------------------------------------------------------
-@app.route("/api/auth-check")
-def auth_check():
+app = create_app()
 
-    if "user" in session:
-        return jsonify({
-            "authenticated": True,
-            "username":
-                session["user"],
-            "role":
-                session["role"],
-        })
-
-    return jsonify({
-        "authenticated": False
-    })
-
-# ---------------------------------------------------------------------------
-# POST /api/clusters/<cluster_id>/health
-# Runs sreport utilization on the target cluster
-# ---------------------------------------------------------------------------
-
-# Temporary hardcoded cluster config — move to DB later
-CLUSTERS = {
-    "fortytwo": {
-        "host": "192.168.1.152",  # <-- replace this
-        "port": 22,
-    }
-}
-
-@app.route("/api/clusters/<cluster_id>/health", methods=["POST"])
-def get_cluster_health(cluster_id):
+@app.route("/api/clusters/<cluster_id>/report", methods=["POST"])
+def get_cluster_report(cluster_id):
+    """
+    Generate and download a PDF utilization report for a cluster.
+ 
+    Body:
+        { "start": "2025-10-01", "end": "2025-12-31" }
+ 
+    Returns:
+        PDF file download
+    """
     if "user" not in session:
         return jsonify({"error": "Not authenticated"}), 401
-
-    cluster = CLUSTERS.get(cluster_id)
+ 
+    cluster = config.CLUSTERS.get(cluster_id)
     if not cluster:
         return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
-
-    body = request.get_json(silent=True) or {}
-    start = body.get("start", "2025-10-01")
-    end   = body.get("end",   "2025-12-31")
-
-    # Temporary hardcoded credentials — move to encrypted DB later
+ 
+    body     = request.get_json(silent=True) or {}
+    start    = body.get("start", "2025-10-01")
+    end      = body.get("end",   "2025-12-31")
     username = os.environ.get("HPC_USER", "")
     password = os.environ.get("HPC_PASS", "")
-
+ 
     if not username or not password:
         return jsonify({"error": "HPC credentials not set"}), 500
-
+ 
     command = f"sreport cluster Utilization start={start} end={end} -t percent"
-
+ 
     try:
         raw = run_hpc_command(
             host=cluster["host"],
@@ -143,13 +79,26 @@ def get_cluster_health(cluster_id):
         return jsonify({"error": "Cluster connection timed out"}), 504
     except SSHError as e:
         return jsonify({"error": "SSH failed", "detail": str(e)}), 502
-
+ 
     parsed = parse_cluster_utilization(raw)
-
     if not parsed.get("metrics"):
-        return jsonify({"error": "Could not parse output", "raw": raw}), 500
-
+        return jsonify({"error": "Could not parse cluster output", "raw": raw}), 500
+ 
     parsed.pop("raw", None)
-    return jsonify(parsed), 200
+ 
+    # Generate PDF
+    try:
+        pdf_bytes = generate_utilization_report(parsed)
+    except Exception as e:
+        return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
+ 
+    filename = f"hpc_report_{cluster_id}_{start}_to_{end}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True, port=5000)

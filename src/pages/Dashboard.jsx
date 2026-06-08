@@ -1,6 +1,10 @@
 
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import {
+  clusterDocsPath,
+  clusterStatusPath,
+} from "../config/clusters";
 
 export default function Dashboard() {
   const { user, role } = useAuth();
@@ -105,9 +109,7 @@ function UserDashboard({
             <button
               style={styles.actionBtn}
               onClick={() =>
-                navigate(
-                  "/cluster-status"
-                )
+                navigate(clusterStatusPath())
               }
             >
               Live Status
@@ -116,9 +118,7 @@ function UserDashboard({
             <button
               style={styles.actionBtn}
               onClick={() =>
-                navigate(
-                  "/cluster-docs"
-                )
+                navigate(clusterDocsPath())
               }
             >
               Download Docs
@@ -264,6 +264,9 @@ function AdminDashboard({
 
             <button
               style={styles.actionBtn}
+              onClick={() =>
+                navigate(clusterStatusPath())
+              }
             >
               Cluster Monitoring
             </button>
