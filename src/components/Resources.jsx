@@ -38,6 +38,7 @@ function DropdownCard({ title, items }) {
               key={index}
               label={item.label}
               host={item.host}
+              clusterId={item.clusterId}
             />
           ))}
         </ul>
@@ -46,7 +47,7 @@ function DropdownCard({ title, items }) {
   );
 }
 
-function ListItem({ label, host }) {
+function ListItem({ label, host, clusterId }) {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -55,11 +56,6 @@ function ListItem({ label, host }) {
       window.location.assign(`ssh://${host}`);
     }
   };
-
-  const clusterId = label
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[():]/g, "");
 
   return (
     <li
@@ -128,36 +124,36 @@ function ListItem({ label, host }) {
 }
 
 function Resources() {
-  const clusterItems = [
-    { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: "localhost" },
-    { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: "192.168.1.170" },
-    { label: "Athena Cluster (Dr. Mukul) : CPU", host: "192.168.1.211" },
-    { label: "Charu Cluster (Dr. Arnab) : CPU", host: "192.168.1.202" },
-    { label: "Megha Cluster (Dr. Neena) : CPU", host: "192.168.1.213" },
-    { label: "Taurus Cluster (Dr. Arun) : CPU", host: "192.168.1.225" },
-    { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: "192.168.1.212" },
-    { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: "192.168.1.136" },
-    { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: "192.168.1.139" },
-    { label: "Violin Cluster (Dr. Srabanti) : CPU", host: "" },
-    { label: "Veena Cluster (Dr. Srabanti) : CPU", host: "192.168.1.167" },
-    { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: "localhost" },
-    { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: "192.168.1.152" },
-    { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: "192.168.1.250" },
-    { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: "localhost" },
-    { label: "PARAM Brahma Cluster : CPU + GPU", host: "localhost" },
-  ];
+ const clusterItems = [
+  { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: "your-ip", clusterId: "cms" },
+  { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: "192.168.1.170", clusterId: "fermi" },
+  { label: "Athena Cluster (Dr. Mukul) : CPU", host: "192.168.1.211", clusterId: "athena" },
+  { label: "Charu Cluster (Dr. Arnab) : CPU", host: "192.168.1.202", clusterId: "charu" },
+  { label: "Megha Cluster (Dr. Neena) : CPU", host: "192.168.1.213", clusterId: "megha" },
+  { label: "Taurus Cluster (Dr. Arun) : CPU", host: "192.168.1.225", clusterId: "taurus" },
+  { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: "192.168.1.212", clusterId: "lammer" },
+  { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: "192.168.1.136", clusterId: "maths" },
+  { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: "192.168.1.139", clusterId: "bhoomi" },
+  { label: "Violin Cluster (Dr. Srabanti) : CPU", host: "", clusterId: "violin" },
+  { label: "Veena Cluster (Dr. Srabanti) : CPU", host: "192.168.1.167", clusterId: "veena" },
+  { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: "your-ip", clusterId: "onsagar" },
+  { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: "192.168.1.152", clusterId: "fortytwo" },
+  { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: "192.168.1.250", clusterId: "niraj" },
+  { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: "your-ip", clusterId: "ada" },
+  { label: "PARAM Brahma Cluster : CPU + GPU", host: "your-ip", clusterId: "param-brahma" },
+];
 
-  const serverItems = [
-    { label: "Dr. Apratim High End Server 1 : CPU + GPU", host: "192.168.1.146" },
-    { label: "Dr. Apratim High End Server 2 : CPU + GPU", host: "192.168.1.175" },
-    { label: "Dr. Apratim High End Server 3 : CPU + GPU", host: "192.168.1.176" },
-    { label: "Dr. Joy High End Server 1 : CPU", host: "192.168.1.237" },
-    { label: "Dr. Joy High End Server 2 : CPU", host: "192.168.1.233" },
-    { label: "Dr. Arnab High End Server : GPU", host: "192.168.1.192" },
-    { label: "Dr. Arka High End Server 1 : CPU", host: "192.168.1.199" },
-    { label: "Dr. Arka High End Server 2 : CPU", host: "192.168.1.142" },
-    { label: "Dr. Bijay High End Server : CPU", host: "localhost" },
-  ];
+const serverItems = [
+  { label: "Dr. Apratim High End Server 1 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-1" },
+  { label: "Dr. Apratim High End Server 2 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-2" },
+  { label: "Dr. Apratim High End Server 3 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-3" },
+  { label: "Dr. Joy High End Server 1 : CPU", host: "your-ip", clusterId: "joy-server-1" },
+  { label: "Dr. Joy High End Server 2 : CPU", host: "your-ip", clusterId: "joy-server-2" },
+  { label: "Dr. Arnab High End Server : GPU", host: "your-ip", clusterId: "arnab-server" },
+  { label: "Dr. Arka High End Server 1 : CPU", host: "your-ip", clusterId: "arka-server-1" },
+  { label: "Dr. Arka High End Server 2 : CPU", host: "your-ip", clusterId: "arka-server-2" },
+  { label: "Dr. Bijay High End Server : CPU", host: "your-ip", clusterId: "bijay-server" },
+];
 
   return (
     <section style={styles.section}>

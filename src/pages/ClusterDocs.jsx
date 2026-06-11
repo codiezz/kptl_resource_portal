@@ -6,40 +6,26 @@ import {
   Cell,
   ResponsiveContainer,
 } from "recharts";
+import axios from "axios";
 
-function DonutChart({
-  title,
-  value,
-}) {
+
+function DonutChart({ title, value }) {
   const data = [
-    {
-      name: "Used",
-      value,
-    },
-    {
-      name: "Free",
-      value: 100 - value,
-    },
+    { name: "Used", value },
+    { name: "Free", value: 100 - value },
   ];
 
   return (
     <div style={styles.chartCard}>
-      <h3 style={styles.chartTitle}>
-        {title}
-      </h3>
+      <h3 style={styles.chartTitle}>{title}</h3>
 
-      <div
-  style={{
-    width: "155px",
-    height: "155px",
-  }}
->
+      <div style={{ width: "155px", height: "155px" }}>
         <ResponsiveContainer>
           <PieChart>
             <Pie
               data={data}
               innerRadius={52}
-outerRadius={68}
+              outerRadius={68}
               paddingAngle={3}
               dataKey="value"
             >
@@ -66,119 +52,119 @@ outerRadius={68}
 }
 
 export default function ClusterDocs() {
-  const { clusterId } =
-    useParams();
+  const { clusterId } = useParams();
 
-  const [startDate,
-    setStartDate] =
-    useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const [endDate,
-    setEndDate] =
-    useState("");
+  const handleGenerateReport = async () => {
+    if (!startDate || !endDate) {
+      setError("Please select both start and end dates.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    try {
+      const response = await axios.post(
+        `http://localhost:5000/api/clusters/${clusterId}/report`,
+        { start: startDate, end: endDate },
+        { withCredentials: true, responseType: "blob" }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `report_${clusterId}_${startDate}_to_${endDate}.pdf`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Failed to generate report. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <section style={styles.page}>
       <div style={styles.container}>
-        <span style={styles.badge}>
-          Cluster Analytics
-        </span>
+        <span style={styles.badge}>Cluster Analytics</span>
 
         <h1 style={styles.heading}>
-          {formatClusterName(
-            clusterId
-          )}
+          {formatClusterName(clusterId)}
         </h1>
 
         <p style={styles.subheading}>
-          Select a date range to
-          view cluster statistics.
+          Select a date range to view cluster statistics.
         </p>
 
         <div style={styles.filterCard}>
-          <div
-            style={styles.inputGroup}
-          >
-            <label>
-              Start Date
-            </label>
-
+          <div style={styles.inputGroup}>
+            <label>Start Date</label>
             <input
               type="date"
               value={startDate}
-              onChange={(e) =>
-                setStartDate(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setStartDate(e.target.value)}
               style={styles.input}
             />
           </div>
 
-          <div
-            style={styles.inputGroup}
-          >
-            <label>
-              End Date
-            </label>
-
+          <div style={styles.inputGroup}>
+            <label>End Date</label>
             <input
               type="date"
               value={endDate}
-              onChange={(e) =>
-                setEndDate(
-                  e.target.value
-                )
-              }
+              onChange={(e) => setEndDate(e.target.value)}
               style={styles.input}
             />
           </div>
 
+          {error && (
+            <p style={{ color: "#c1121f", fontSize: "13px", width: "100%" }}>
+              {error}
+            </p>
+          )}
+
           <button
-            style={styles.button}
+            style={{
+              ...styles.button,
+              opacity: loading ? 0.7 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+            onClick={handleGenerateReport}
+            disabled={loading}
           >
-            Generate Statistics
+            {loading ? "Generating..." : "Generate Statistics"}
           </button>
         </div>
 
         <div style={styles.chartGrid}>
-  <DonutChart
-    title="Average CPU"
-    value={67}
-  />
-
-  <DonutChart
-    title="Average GPU"
-    value={42}
-  />
-
-  <DonutChart
-    title="Job Success"
-    value={91}
-  />
-</div>
+          <DonutChart title="Average CPU" value={67} />
+          <DonutChart title="Average GPU" value={42} />
+          <DonutChart title="Job Success" value={91} />
+        </div>
       </div>
     </section>
   );
 }
 
-function formatClusterName(
-  name
-) {
+function formatClusterName(name) {
   return name
     .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) =>
-      c.toUpperCase()
-    );
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 const styles = {
   page: {
-  minHeight: "100vh",
-  background:
-    "linear-gradient(to bottom,#fafafa,#f6f7fb)",
-  padding: "40px 30px 90px",
-},
+    minHeight: "100vh",
+    background: "linear-gradient(to bottom,#fafafa,#f6f7fb)",
+    padding: "40px 30px 90px",
+  },
 
   container: {
     maxWidth: "900px",
@@ -186,7 +172,7 @@ const styles = {
   },
 
   badge: {
-     background: "#ffe5e5",
+    background: "#ffe5e5",
     color: "#c1121f",
     padding: "10px 18px",
     borderRadius: "999px",
@@ -194,18 +180,15 @@ const styles = {
     fontSize: "14px",
   },
 
- heading: {
-  fontSize: "34px",
-  fontWeight: "500",
-
-  marginTop: "10px",
-  marginBottom: "4px",
-
-  lineHeight: "1.15",
-  letterSpacing: "-0.5px",
-
-  maxWidth: "800px",
-},
+  heading: {
+    fontSize: "34px",
+    fontWeight: "500",
+    marginTop: "10px",
+    marginBottom: "4px",
+    lineHeight: "1.15",
+    letterSpacing: "-0.5px",
+    maxWidth: "800px",
+  },
 
   subheading: {
     color: "#666",
@@ -216,8 +199,7 @@ const styles = {
     background: "#fff",
     borderRadius: "24px",
     padding: "30px",
-    border:
-      "1px solid #ececec",
+    border: "1px solid #ececec",
     display: "flex",
     gap: "20px",
     flexWrap: "wrap",
@@ -231,8 +213,7 @@ const styles = {
   },
 
   input: {
-    border:
-      "1px solid #ddd",
+    border: "1px solid #ddd",
     borderRadius: "12px",
     padding: "12px",
   },
@@ -243,7 +224,6 @@ const styles = {
     border: "none",
     borderRadius: "12px",
     padding: "14px 24px",
-    cursor: "pointer",
   },
 
   stats: {
@@ -253,36 +233,28 @@ const styles = {
     borderRadius: "24px",
     lineHeight: "2",
   },
+
   chartGrid: {
-  display: "flex",
-  gap: "28px",
-  flexWrap: "wrap",
-  marginTop: "50px",
-},
+    display: "flex",
+    gap: "28px",
+    flexWrap: "wrap",
+    marginTop: "50px",
+  },
 
-chartCard: {
-  background: "#fff",
+  chartCard: {
+    background: "#fff",
+    borderRadius: "24px",
+    padding: "14px 18px",
+    border: "1px solid #ececec",
+    boxShadow: "0 6px 18px rgba(0,0,0,0.035)",
+    width: "210px",
+    height: "230px",
+    flexShrink: 0,
+  },
 
-  borderRadius: "24px",
-
-  padding: "14px 18px",
-
-  border:
-    "1px solid #ececec",
-
-  boxShadow:
-    "0 6px 18px rgba(0,0,0,0.035)",
-
-  width: "210px",
-
-  height: "230px",
-
-  flexShrink: 0,
-},
-
-chartTitle: {
-  marginBottom: "14px",
-  fontSize: "16px",
-  fontWeight: "600",
-},
+  chartTitle: {
+    marginBottom: "14px",
+    fontSize: "16px",
+    fontWeight: "600",
+  },
 };

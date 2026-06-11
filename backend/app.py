@@ -1,3 +1,4 @@
+from ssh_layer.pdf_account_report import generate_account_report
 from flask import Flask, request, jsonify, session, send_file
 from flask_cors import CORS
 import os
@@ -20,6 +21,10 @@ from ssh_layer.slurm_report_parser import (
     parse_account_utilization
 )
 from ssh_layer.pdf_cluster_report import generate_enhanced_cluster_report
+from ssh_layer.pdf_gpu_report import generate_gpu_report
+from ssh_layer.pdf_account_report import generate_account_report
+from ssh_layer.pdf_user_report import generate_user_report
+
 
 
 def create_app():
@@ -194,6 +199,160 @@ def get_enhanced_cluster_report(cluster_id):
         mimetype='application/pdf',
         as_attachment=True,
         download_name=filename
+    )
+@app.route("/api/clusters/<cluster_id>/report/gpu", methods=["POST"])
+def get_gpu_report(cluster_id):
+    """
+    GPU-focused utilization PDF report.
+    Runs: sreport cluster utilization -t percent --tres=gres/gpu
+ 
+    POST body: { "start": "2025-10-01", "end": "2025-12-31" }
+    Returns: downloadable PDF
+ 
+    Graceful degradation: if GPU data unavailable, PDF still generates.
+    """
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+ 
+    cluster = config.CLUSTERS.get(cluster_id)
+    if not cluster:
+        return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
+ 
+    body  = request.get_json(silent=True) or {}
+    start = body.get("start", "2025-10-01")
+    end   = body.get("end",   "2025-12-31")
+ 
+    username = os.environ.get("HPC_USER", "")
+    password = os.environ.get("HPC_PASS", "")
+    if not username or not password:
+        return jsonify({"error": "HPC credentials not set"}), 500
+ 
+    # GPU command — gres/gpu confirmed on fortytwo
+    gpu_raw = None
+    try:
+        gpu_raw = run_hpc_command(
+            host=cluster["host"],
+            username=username,
+            password=password,
+            port=cluster["port"],
+            timeout=30,
+            command=f"sreport cluster utilization Start={start} End={end} -t percent --tres=gres/gpu"
+        )
+    except SSHAuthError as e:
+        return jsonify({"error": "Authentication failed", "detail": str(e)}), 401
+    except SSHTimeoutError:
+        return jsonify({"error": "Cluster connection timed out"}), 504
+    except SSHError as e:
+        return jsonify({"error": "SSH failed", "detail": str(e)}), 502
+ 
+    gpu_data = parse_tres_utilization(gpu_raw) if gpu_raw else {}
+ 
+    # Use period from GPU data if available, else fall back to request params
+    period = gpu_data.get("period", {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"})
+ 
+    data = {
+        "cluster": gpu_data.get("cluster", cluster_id),
+        "period":  period,
+        "gpu":     gpu_data,
+    }
+ 
+    try:
+        pdf_bytes = generate_gpu_report(data)
+    except Exception as e:
+        return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
+ 
+    filename = f"gpu_report_{cluster_id}_{start}_to_{end}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
+@app.route("/api/clusters/<cluster_id>/report/account", methods=["POST"])
+def get_account_report(cluster_id):
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    cluster = config.CLUSTERS.get(cluster_id)
+    if not cluster:
+        return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
+    body  = request.get_json(silent=True) or {}
+    start = body.get("start", "2025-10-01")
+    end   = body.get("end",   "2025-12-31")
+    username = os.environ.get("HPC_USER", "")
+    password = os.environ.get("HPC_PASS", "")
+    if not username or not password:
+        return jsonify({"error": "HPC credentials not set"}), 500
+    acct_raw = None
+    try:
+        acct_raw = run_hpc_command(
+            host=cluster["host"], username=username, password=password,
+            port=cluster["port"], timeout=30,
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -t hourper"
+        )
+    except SSHAuthError as e:
+        return jsonify({"error": "Authentication failed", "detail": str(e)}), 401
+    except SSHTimeoutError:
+        return jsonify({"error": "Cluster connection timed out"}), 504
+    except SSHError as e:
+        return jsonify({"error": "SSH failed", "detail": str(e)}), 502
+    acct_data = parse_account_utilization(acct_raw) if acct_raw else {}
+    period = acct_data.get("period", {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"})
+    data = {
+        "cluster":  acct_data.get("cluster", cluster_id),
+        "period":   period,
+        "accounts": acct_data,
+    }
+    try:
+        pdf_bytes = generate_account_report(data)
+    except Exception as e:
+        return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f"account_report_{cluster_id}_{start}_to_{end}.pdf"
+    )
+@app.route("/api/clusters/<cluster_id>/report/user", methods=["POST"])
+def get_user_report(cluster_id):
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    cluster = config.CLUSTERS.get(cluster_id)
+    if not cluster:
+        return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
+    body  = request.get_json(silent=True) or {}
+    start = body.get("start", "2025-10-01")
+    end   = body.get("end",   "2025-12-31")
+    username = os.environ.get("HPC_USER", "")
+    password = os.environ.get("HPC_PASS", "")
+    if not username or not password:
+        return jsonify({"error": "HPC credentials not set"}), 500
+    acct_raw = None
+    try:
+        acct_raw = run_hpc_command(
+            host=cluster["host"], username=username, password=password,
+            port=cluster["port"], timeout=30,
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -t hourper"
+        )
+    except SSHAuthError as e:
+        return jsonify({"error": "Authentication failed", "detail": str(e)}), 401
+    except SSHTimeoutError:
+        return jsonify({"error": "Cluster connection timed out"}), 504
+    except SSHError as e:
+        return jsonify({"error": "SSH failed", "detail": str(e)}), 502
+    acct_data = parse_account_utilization(acct_raw) if acct_raw else {}
+    period = acct_data.get("period", {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"})
+    data = {
+        "cluster":  acct_data.get("cluster", cluster_id),
+        "period":   period,
+        "accounts": acct_data,
+    }
+    try:
+        pdf_bytes = generate_user_report(data)
+    except Exception as e:
+        return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
+    return send_file(
+        io.BytesIO(pdf_bytes), mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f"user_report_{cluster_id}_{start}_to_{end}.pdf"
     )
 
 if __name__ == "__main__":

@@ -1,28 +1,3 @@
-"""
-pdf_cluster_report.py
-
-Generates an enhanced, information-rich cluster utilization PDF report.
-
-Sections:
-  1. Cover Page
-  2. Executive Summary (CPU + GPU combined table)
-  3. CPU Detailed Analysis (table + pie + bar)
-  4. GPU Detailed Analysis (table + pie + bar) OR unavailable notice
-  5. Resource Consumption by Account (table + horizontal bar)
-  6. Top Users (table + horizontal bar)
-  7. Observations
-
-Usage:
-    from pdf_cluster_report import generate_enhanced_cluster_report
-
-    pdf_bytes = generate_enhanced_cluster_report({
-        "cluster":  "fortytwo",
-        "period":   {"start": "2025-10-01T00:00:00", "end": "2025-12-31T23:59:59"},
-        "cpu":      {...},   # from parse_tres_utilization, or {}
-        "gpu":      {...},   # from parse_tres_utilization, or {}
-        "accounts": {...},   # from parse_account_utilization, or {}
-    })
-"""
 
 import io
 import os
@@ -397,7 +372,7 @@ def generate_enhanced_cluster_report(data: dict) -> bytes:
     Returns:
         PDF as bytes.
     """
-    from slurm_report_parser import get_all_users_sorted
+    from ssh_layer.slurm_report_parser import get_all_users_sorted
 
     cluster_name = data.get('cluster', 'Unknown')
     period       = data.get('period', {})
@@ -774,65 +749,69 @@ def _build_pdf(
 
 
 # ---------------------------------------------------------------------------
-# Standalone test
+# Standalone test — uses REAL SSH data from fortytwo
+# Run: HPC_USER=youruser HPC_PASS=yourpass python pdf_cluster_report.py
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
+    import os
     import sys
     sys.path.insert(0, '.')
 
-    sample_data = {
-        "cluster": "fortytwo",
-        "period": {"start": "2025-10-01T00:00:00", "end": "2025-12-31T23:59:59"},
-        "cpu": {
-            "tres_name": "cpu",
-            "period": {"start": "2025-10-01T00:00:00", "end": "2025-12-31T23:59:59"},
-            "metrics": {
-                "allocated": 29.22, "down": 2.75, "planned_down": 0.0,
-                "idle": 52.86, "planned": 15.18, "reported": 100.0
-            }
-        },
-        "gpu": {
-            "tres_name": "gres/gpu",
-            "metrics": {
-                "allocated": 49.74, "down": 2.44, "planned_down": 0.0,
-                "idle": 47.82, "planned": 0.0, "reported": 100.65
-            }
-        },
-        "accounts": {
-            "cluster": "fortytwo",
-            "cluster_total": {"hours": 16515432, "percentage": 100.0},
-            "accounts": [
-                {
-                    "account": "dsai_lab",
-                    "hours": 4388444, "percentage": 26.56,
-                    "users": [
-                        {"login": "alice", "proper_name": "Alice Smith",   "hours": 200000, "percentage": 1.21},
-                        {"login": "bob",   "proper_name": "Bob Jones",     "hours": 150000, "percentage": 0.91},
-                    ]
-                },
-                {
-                    "account": "physics",
-                    "hours": 3100000, "percentage": 18.77,
-                    "users": [
-                        {"login": "charlie", "proper_name": "C. Brown",    "hours": 500000, "percentage": 3.03},
-                    ]
-                },
-                {
-                    "account": "chem_dept",
-                    "hours": 2000000, "percentage": 12.11,
-                    "users": [
-                        {"login": "diana", "proper_name": "Diana Prince",  "hours": 300000, "percentage": 1.82},
-                        {"login": "eve",   "proper_name": "Eve Wilson",    "hours": 100000, "percentage": 0.61},
-                    ]
-                },
-            ]
-        }
+    from ssh_executor import run_hpc_command, SSHError
+    from slurm_report_parser import (
+        parse_tres_utilization,
+        parse_account_utilization,
+    )
+
+    HOST = "192.168.1.152"
+    USER  = os.environ.get("HPC_USER", "")
+    PASS  = os.environ.get("HPC_PASS", "")
+    START = "2025-10-01"
+    END   = "2025-12-31"
+
+    if not USER or not PASS:
+        print("Set HPC_USER and HPC_PASS environment variables before running.")
+        sys.exit(1)
+
+    print(f"Connecting to {HOST} as {USER}...")
+
+    # CPU
+    cpu_raw = run_hpc_command(HOST, USER, PASS,
+        f"sreport cluster utilization Start={START} End={END} -t percent --tres=cpu")
+    cpu_data = parse_tres_utilization(cpu_raw)
+    print(f"CPU parsed: {cpu_data.get('metrics', {})}")
+
+    # GPU
+    gpu_data = {}
+    try:
+        gpu_raw = run_hpc_command(HOST, USER, PASS,
+            f"sreport cluster utilization Start={START} End={END} -t percent --tres=gres/gpu")
+        gpu_data = parse_tres_utilization(gpu_raw)
+        print(f"GPU parsed: {gpu_data.get('metrics', {})}")
+    except SSHError as e:
+        print(f"GPU command failed (graceful): {e}")
+
+    # Accounts
+    acct_data = {}
+    try:
+        acct_raw = run_hpc_command(HOST, USER, PASS,
+            f"sreport cluster AccountUtilizationByUser Start={START} End={END} -t hourper")
+        acct_data = parse_account_utilization(acct_raw)
+        print(f"Accounts parsed: {len(acct_data.get('accounts', []))} accounts")
+    except SSHError as e:
+        print(f"Account command failed (graceful): {e}")
+
+    data = {
+        "cluster":  cpu_data.get("cluster", "fortytwo"),
+        "period":   cpu_data.get("period", {}),
+        "cpu":      cpu_data,
+        "gpu":      gpu_data,
+        "accounts": acct_data,
     }
 
-    pdf = generate_enhanced_cluster_report(sample_data)
-    out = "/tmp/test_enhanced_report.pdf"
+    pdf = generate_enhanced_cluster_report(data)
+    out = "/tmp/test_enhanced_report_real.pdf"
     with open(out, 'wb') as f:
         f.write(pdf)
-    print(f"PDF generated: {len(pdf):,} bytes → {out}")
-    print("7 pages: Cover | Executive Summary | CPU | GPU | Accounts | Users | Observations")
+    print(f"\nPDF generated: {len(pdf):,} bytes → {out}")
