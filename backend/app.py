@@ -15,6 +15,11 @@ from ssh_layer.slurm_parser import parse_cluster_utilization
 
 import config
 from routes import auth_bp, clusters_bp, ssh_bp
+from ssh_layer.slurm_report_parser import (
+    parse_tres_utilization,
+    parse_account_utilization
+)
+from ssh_layer.pdf_cluster_report import generate_enhanced_cluster_report
 
 
 def create_app():
@@ -93,6 +98,97 @@ def get_cluster_report(cluster_id):
         return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
  
     filename = f"hpc_report_{cluster_id}_{start}_to_{end}.pdf"
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=filename
+    )
+
+@app.route("/api/clusters/<cluster_id>/report/cluster", methods=["POST"])
+def get_enhanced_cluster_report(cluster_id):
+    """
+    Enhanced cluster utilization PDF report.
+    Runs 3 Slurm commands: CPU utilization, GPU utilization, AccountUtilizationByUser.
+    GPU command failure is handled gracefully — PDF still generates.
+ 
+    POST body: { "start": "2025-10-01", "end": "2025-12-31" }
+    Returns: downloadable PDF
+    """
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+ 
+    cluster = config.CLUSTERS.get(cluster_id)
+    if not cluster:
+        return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
+ 
+    body  = request.get_json(silent=True) or {}
+    start = body.get("start", "2025-10-01")
+    end   = body.get("end",   "2025-12-31")
+ 
+    username = os.environ.get("HPC_USER", "")
+    password = os.environ.get("HPC_PASS", "")
+    if not username or not password:
+        return jsonify({"error": "HPC credentials not set"}), 500
+ 
+    host = cluster["host"]
+    port = cluster["port"]
+ 
+    # --- Command 1: CPU utilization ---
+    cpu_raw = None
+    try:
+        cpu_raw = run_hpc_command(
+            host=host, username=username, password=password, port=port, timeout=30,
+            command=f"sreport cluster utilization Start={start} End={end} -t percent --tres=cpu"
+        )
+    except SSHError as e:
+        return jsonify({"error": "SSH failed on CPU command", "detail": str(e)}), 502
+ 
+    # --- Command 2: GPU utilization (graceful — failure does not abort PDF) ---
+    gpu_raw = None
+    try:
+        gpu_raw = run_hpc_command(
+            host=host, username=username, password=password, port=port, timeout=30,
+            command=f"sreport cluster utilization Start={start} End={end} -t percent --tres=gres/gpu"
+        )
+    except SSHError:
+        gpu_raw = None  # PDF will show "GPU data unavailable"
+ 
+    # --- Command 3: Account utilization ---
+    acct_raw = None
+    try:
+        acct_raw = run_hpc_command(
+            host=host, username=username, password=password, port=port, timeout=30,
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -t hourper"
+        )
+    except SSHError:
+        acct_raw = None  # PDF will show sections as unavailable
+ 
+    # --- Parse all results ---
+    cpu_data  = parse_tres_utilization(cpu_raw)  if cpu_raw  else {}
+    gpu_data  = parse_tres_utilization(gpu_raw)  if gpu_raw  else {}
+    acct_data = parse_account_utilization(acct_raw) if acct_raw else {}
+ 
+    if not cpu_data.get("metrics"):
+        return jsonify({"error": "Could not parse CPU utilization output", "raw": cpu_raw}), 500
+ 
+    # Assemble data dict for PDF generator
+    period = cpu_data.get("period", {})
+    data = {
+        "cluster":  cpu_data.get("cluster", cluster_id),
+        "period":   period,
+        "cpu":      cpu_data,
+        "gpu":      gpu_data,
+        "accounts": acct_data,
+    }
+ 
+    # --- Generate PDF ---
+    try:
+        pdf_bytes = generate_enhanced_cluster_report(data)
+    except Exception as e:
+        return jsonify({"error": "PDF generation failed", "detail": str(e)}), 500
+ 
+    filename = f"cluster_report_{cluster_id}_{start}_to_{end}.pdf"
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype='application/pdf',
