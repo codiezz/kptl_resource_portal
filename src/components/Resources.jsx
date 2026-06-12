@@ -38,7 +38,6 @@ function DropdownCard({ title, items }) {
               key={index}
               label={item.label}
               host={item.host}
-              clusterId={item.clusterId}
             />
           ))}
         </ul>
@@ -47,7 +46,7 @@ function DropdownCard({ title, items }) {
   );
 }
 
-function ListItem({ label, host, clusterId }) {
+function ListItem({ label, host }) {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -56,6 +55,11 @@ function ListItem({ label, host, clusterId }) {
       window.location.assign(`ssh://${host}`);
     }
   };
+
+  const clusterId = label
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[():]/g, "");
 
   return (
     <li
@@ -77,10 +81,8 @@ function ListItem({ label, host, clusterId }) {
           : "none",
       }}
     >
-      {/* Title */}
       <div style={styles.resourceTitle}>{label}</div>
 
-      {/* Hover Actions */}
       <div
         style={{
           ...styles.actionPanel,
@@ -103,10 +105,10 @@ function ListItem({ label, host, clusterId }) {
           style={styles.actionBtn}
           onClick={(e) => {
             e.stopPropagation();
-            window.location.href = `/cluster/${clusterId}/docs`;
+            window.location.href = `/cluster/${clusterId}/reports`;
           }}
         >
-          Docs
+          Reports 
         </button>
 
         <button
@@ -124,36 +126,36 @@ function ListItem({ label, host, clusterId }) {
 }
 
 function Resources() {
- const clusterItems = [
-  { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: "your-ip", clusterId: "cms" },
-  { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: "192.168.1.170", clusterId: "fermi" },
-  { label: "Athena Cluster (Dr. Mukul) : CPU", host: "192.168.1.211", clusterId: "athena" },
-  { label: "Charu Cluster (Dr. Arnab) : CPU", host: "192.168.1.202", clusterId: "charu" },
-  { label: "Megha Cluster (Dr. Neena) : CPU", host: "192.168.1.213", clusterId: "megha" },
-  { label: "Taurus Cluster (Dr. Arun) : CPU", host: "192.168.1.225", clusterId: "taurus" },
-  { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: "192.168.1.212", clusterId: "lammer" },
-  { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: "192.168.1.136", clusterId: "maths" },
-  { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: "192.168.1.139", clusterId: "bhoomi" },
-  { label: "Violin Cluster (Dr. Srabanti) : CPU", host: "", clusterId: "violin" },
-  { label: "Veena Cluster (Dr. Srabanti) : CPU", host: "192.168.1.167", clusterId: "veena" },
-  { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: "your-ip", clusterId: "onsagar" },
-  { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: "192.168.1.152", clusterId: "fortytwo" },
-  { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: "192.168.1.250", clusterId: "niraj" },
-  { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: "your-ip", clusterId: "ada" },
-  { label: "PARAM Brahma Cluster : CPU + GPU", host: "your-ip", clusterId: "param-brahma" },
-];
+  const clusterItems = [
+    { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: import.meta.env.VITE_CMS_HOST, clusterId: "cms-cluster" },
+    { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: import.meta.env.VITE_FERMI_HOST, clusterId: "fermi-cluster" },
+    { label: "Athena Cluster (Dr. Mukul) : CPU", host: import.meta.env.VITE_ATHENA_HOST, clusterId: "athena-cluster" },
+    { label: "Charu Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_CHARU_HOST, clusterId: "charu-cluster" },
+    { label: "Megha Cluster (Dr. Neena) : CPU", host: import.meta.env.VITE_MEGHA_HOST, clusterId: "megha-cluster" },
+    { label: "Taurus Cluster (Dr. Arun) : CPU", host: import.meta.env.VITE_TAURUS_HOST, clusterId: "taurus-cluster" },
+    { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: import.meta.env.VITE_LAMMER_HOST, clusterId: "lammer-cluster" },
+    { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: import.meta.env.VITE_MATHS_HOST, clusterId: "maths-cluster" },
+    { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: import.meta.env.VITE_BHOOMI_HOST, clusterId: "bhoomi-cluster" },
+    { label: "Violin Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VIOLIN_HOST, clusterId: "violin-cluster" },
+    { label: "Veena Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VEENA_HOST, clusterId: "veena-cluster" },
+    { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_ONSAGAR_HOST, clusterId: "onsagar-cluster" },
+    { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: import.meta.env.VITE_FORTYTWO_HOST, clusterId: "fortytwo-cluster" },
+    { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: import.meta.env.VITE_NIRAJ_HOST, clusterId: "niraj-cluster" },
+    { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: import.meta.env.VITE_ADA_HOST, clusterId: "ada-cluster" },
+    { label: "PARAM Brahma Cluster : CPU + GPU", host: import.meta.env.VITE_PARAM_HOST, clusterId: "param-brahma-cluster" },
+  ];
 
-const serverItems = [
-  { label: "Dr. Apratim High End Server 1 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-1" },
-  { label: "Dr. Apratim High End Server 2 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-2" },
-  { label: "Dr. Apratim High End Server 3 : CPU + GPU", host: "your-ip", clusterId: "apratim-server-3" },
-  { label: "Dr. Joy High End Server 1 : CPU", host: "your-ip", clusterId: "joy-server-1" },
-  { label: "Dr. Joy High End Server 2 : CPU", host: "your-ip", clusterId: "joy-server-2" },
-  { label: "Dr. Arnab High End Server : GPU", host: "your-ip", clusterId: "arnab-server" },
-  { label: "Dr. Arka High End Server 1 : CPU", host: "your-ip", clusterId: "arka-server-1" },
-  { label: "Dr. Arka High End Server 2 : CPU", host: "your-ip", clusterId: "arka-server-2" },
-  { label: "Dr. Bijay High End Server : CPU", host: "your-ip", clusterId: "bijay-server" },
-];
+  const serverItems = [
+    { label: "Dr. Apratim High End Server 1 : CPU + GPU", host: import.meta.env.VITE_APRATIM_SERVER1_HOST, clusterId: "apratim-server1-cluster" },
+    { label: "Dr. Apratim High End Server 2 : CPU + GPU", host: import.meta.env.VITE_APRATIM_SERVER2_HOST, clusterId: "apratim-server2-cluster" },
+    { label: "Dr. Apratim High End Server 3 : CPU + GPU", host: import.meta.env.VITE_APRATIM_SERVER3_HOST, clusterId: "apratim-server3-cluster" },
+    { label: "Dr. Joy High End Server 1 : CPU", host: import.meta.env.VITE_JOY_SERVER1_HOST, clusterId: "joy-server1-cluster" },
+    { label: "Dr. Joy High End Server 2 : CPU", host: import.meta.env.VITE_JOY_SERVER2_HOST, clusterId: "joy-server2-cluster" },
+    { label: "Dr. Arnab High End Server : GPU", host: import.meta.env.VITE_ARNAB_SERVER_HOST, clusterId: "arnab-server-cluster" },
+    { label: "Dr. Arka High End Server 1 : CPU", host: import.meta.env.VITE_ARKA_SERVER1_HOST, clusterId: "arka-server1-cluster" },
+    { label: "Dr. Arka High End Server 2 : CPU", host: import.meta.env.VITE_ARKA_SERVER2_HOST, clusterId: "arka-server2-cluster" },
+    { label: "Dr. Bijay High End Server : CPU", host: import.meta.env.VITE_BIJAY_SERVER_HOST, clusterId: "bijay-server-cluster" },
+  ];
 
   return (
     <section style={styles.section}>

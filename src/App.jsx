@@ -114,7 +114,7 @@ function App() {
 
           {/* Cluster Docs */}
           <Route
-            path="/cluster/:clusterId/docs"
+            path="/cluster/:clusterId/reports"
             element={
               <RequireAuth>
                 <ClusterDocs />

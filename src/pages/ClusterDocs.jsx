@@ -1,94 +1,45 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-} from "recharts";
 import axios from "axios";
-
-
-function DonutChart({ title, value }) {
-  const data = [
-    { name: "Used", value },
-    { name: "Free", value: 100 - value },
-  ];
-
-  return (
-    <div style={styles.chartCard}>
-      <h3 style={styles.chartTitle}>{title}</h3>
-
-      <div style={{ width: "155px", height: "155px" }}>
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={data}
-              innerRadius={52}
-              outerRadius={68}
-              paddingAngle={3}
-              dataKey="value"
-            >
-              <Cell fill="#c1121f" />
-              <Cell fill="#ececec" />
-            </Pie>
-
-            <text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fontSize="22"
-              fontWeight="700"
-              fill="#111"
-            >
-              {value}%
-            </text>
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
 
 export default function ClusterDocs() {
   const { clusterId } = useParams();
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState(null);
   const [error, setError] = useState("");
 
-  const handleGenerateReport = async () => {
-    if (!startDate || !endDate) {
-      setError("Please select both start and end dates.");
-      return;
-    }
-    setError("");
-    setLoading(true);
-    try {
-      const response = await axios.post(
-        `http://localhost:5000/api/clusters/${clusterId}/report`,
-        { start: startDate, end: endDate },
-        { withCredentials: true, responseType: "blob" }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `report_${clusterId}_${startDate}_to_${endDate}.pdf`
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      setError("Failed to generate report. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleGenerateReport = async (reportType) => {
+  if (!startDate || !endDate) {
+    setError("Please select both start and end dates.");
+    return;
+  }
+  setError("");
+  setLoadingType(reportType);
+  try {
+    const response = await axios.post(
+      `http://localhost:5000/api/clusters/${clusterId}/report/${reportType}`,
+      { start: startDate, end: endDate },
+      { withCredentials: true, responseType: "blob" }
+    );
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `${reportType}_report_${clusterId}_${startDate}_to_${endDate}.pdf`
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    setError("Failed to generate report. Please try again.");
+  } finally {
+    setLoadingType(null);
+  }
+};
 
   return (
     <section style={styles.page}>
@@ -130,24 +81,36 @@ export default function ClusterDocs() {
             </p>
           )}
 
-          <button
-            style={{
-              ...styles.button,
-              opacity: loading ? 0.7 : 1,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-            onClick={handleGenerateReport}
-            disabled={loading}
-          >
-            {loading ? "Generating..." : "Generate Statistics"}
-          </button>
+          <div style={styles.buttonGrid}>
+  {[
+    { type: "cluster", label: "Cluster Report", enabled: true },
+    { type: "gpu",     label: "GPU Report",     enabled: true },
+    { type: "account", label: "Account Report", enabled: false },
+    { type: "user",    label: "User Report",    enabled: false },
+  ].map(({ type, label, enabled }) => {
+    const isLoading = loadingType === type;
+    const isDisabled = !enabled || loadingType !== null;
+    return (
+      <button
+        key={type}
+        style={{
+          ...styles.button,
+          opacity: !enabled ? 0.4 : isDisabled ? 0.7 : 1,
+          cursor: isDisabled ? "not-allowed" : "pointer",
+        }}
+        onClick={() => enabled && handleGenerateReport(type)}
+        disabled={isDisabled}
+        title={!enabled ? "Not yet available" : undefined}
+      >
+        {isLoading ? "Generating..." : label}
+      </button>
+    );
+  })}
+</div>
+
         </div>
 
-        <div style={styles.chartGrid}>
-          <DonutChart title="Average CPU" value={67} />
-          <DonutChart title="Average GPU" value={42} />
-          <DonutChart title="Job Success" value={91} />
-        </div>
+        
       </div>
     </section>
   );
@@ -257,4 +220,10 @@ const styles = {
     fontSize: "16px",
     fontWeight: "600",
   },
+  buttonGrid: {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "12px",
+  width: "100%",
+},
 };
