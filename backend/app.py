@@ -13,6 +13,13 @@ from ssh_layer.ssh_executor import (
     SSHTimeoutError,
 )
 from ssh_layer.slurm_parser import parse_cluster_utilization
+from slurm_report_parser import (
+    parse_tres_utilization,
+    parse_gpu_account_utilization,
+    parse_gpu_account_pct,
+    merge_gpu_account_data,
+)
+from pdf_gpu_report import generate_gpu_report
 
 import config
 from routes import auth_bp, clusters_bp, ssh_bp
@@ -154,7 +161,7 @@ def get_enhanced_cluster_report(cluster_id):
     try:
         gpu_raw = run_hpc_command(
             host=host, username=username, password=password, port=port, timeout=30,
-            command=f"sreport cluster utilization Start={start} End={end} -t percent --tres=gres/gpu"
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -T gres/gpu"
         )
     except SSHError:
         gpu_raw = None  # PDF will show "GPU data unavailable"
@@ -203,13 +210,20 @@ def get_enhanced_cluster_report(cluster_id):
 @app.route("/api/clusters/<cluster_id>/report/gpu", methods=["POST"])
 def get_gpu_report(cluster_id):
     """
-    GPU-focused utilization PDF report.
-    Runs: sreport cluster utilization -t percent --tres=gres/gpu
+    GPU utilization PDF report — extended with account/user consumption pages.
+ 
+    Runs 3 Slurm commands:
+      1. sreport cluster utilization -t percent --tres=gres/gpu
+         → Allocated/Idle/Down/Planned summary (existing pages)
+      2. sreport cluster AccountUtilizationByUser -T gres/gpu
+         → GPU hours per account/user (new accounts page)
+      3. sreport cluster AccountUtilizationByUser -t percent -T gres/gpu
+         → GPU usage % per account/user (new users page)
+ 
+    Commands 2 and 3 fail gracefully — PDF still generates from command 1.
  
     POST body: { "start": "2025-10-01", "end": "2025-12-31" }
     Returns: downloadable PDF
- 
-    Graceful degradation: if GPU data unavailable, PDF still generates.
     """
     if "user" not in session:
         return jsonify({"error": "Not authenticated"}), 401
@@ -227,15 +241,14 @@ def get_gpu_report(cluster_id):
     if not username or not password:
         return jsonify({"error": "HPC credentials not set"}), 500
  
-    # GPU command — gres/gpu confirmed on fortytwo
+    host = cluster["host"]
+    port = cluster["port"]
+ 
+    # --- Command 1: GPU utilization summary (existing) ---
     gpu_raw = None
     try:
         gpu_raw = run_hpc_command(
-            host=cluster["host"],
-            username=username,
-            password=password,
-            port=cluster["port"],
-            timeout=30,
+            host=host, username=username, password=password, port=port, timeout=30,
             command=f"sreport cluster utilization Start={start} End={end} -t percent --tres=gres/gpu"
         )
     except SSHAuthError as e:
@@ -245,15 +258,40 @@ def get_gpu_report(cluster_id):
     except SSHError as e:
         return jsonify({"error": "SSH failed", "detail": str(e)}), 502
  
-    gpu_data = parse_tres_utilization(gpu_raw) if gpu_raw else {}
+    gpu_util = parse_tres_utilization(gpu_raw) if gpu_raw else {}
  
-    # Use period from GPU data if available, else fall back to request params
-    period = gpu_data.get("period", {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"})
+    # --- Command 2: GPU hours by account/user (graceful) ---
+    gpu_hours_raw = None
+    try:
+        gpu_hours_raw = run_hpc_command(
+            host=host, username=username, password=password, port=port, timeout=30,
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -T gres/gpu"
+        )
+    except SSHError:
+        gpu_hours_raw = None
+ 
+    # --- Command 3: GPU percentage by account/user (graceful) ---
+    gpu_pct_raw = None
+    try:
+        gpu_pct_raw = run_hpc_command(
+            host=host, username=username, password=password, port=port, timeout=30,
+            command=f"sreport cluster AccountUtilizationByUser Start={start} End={end} -t percent -T gres/gpu"
+        )
+    except SSHError:
+        gpu_pct_raw = None
+ 
+    # --- Parse and merge ---
+    hours_data = parse_gpu_account_utilization(gpu_hours_raw) if gpu_hours_raw else {}
+    pct_data   = parse_gpu_account_pct(gpu_pct_raw)           if gpu_pct_raw   else {}
+    gpu_accounts = merge_gpu_account_data(hours_data, pct_data) if hours_data else {}
+ 
+    period = gpu_util.get("period", {"start": f"{start}T00:00:00", "end": f"{end}T23:59:59"})
  
     data = {
-        "cluster": gpu_data.get("cluster", cluster_id),
-        "period":  period,
-        "gpu":     gpu_data,
+        "cluster":      gpu_util.get("cluster", cluster_id),
+        "period":       period,
+        "gpu":          gpu_util,
+        "gpu_accounts": gpu_accounts,
     }
  
     try:
@@ -268,6 +306,7 @@ def get_gpu_report(cluster_id):
         as_attachment=True,
         download_name=filename
     )
+ 
 @app.route("/api/clusters/<cluster_id>/report/account", methods=["POST"])
 def get_account_report(cluster_id):
     if "user" not in session:
