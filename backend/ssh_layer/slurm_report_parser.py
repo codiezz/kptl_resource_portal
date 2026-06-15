@@ -26,19 +26,18 @@ _ANSI = re.compile(r'\x1b(?:\[[0-9;]*[a-zA-Z]|\][^\x07]*\x07)')
 
 
 def _clean(raw: str) -> str:
-    """Strip ANSI codes, normalize line endings."""
-    return _ANSI.sub('', (raw or '')).replace('\r\n', '\n').replace('\r', '\n')
+    return raw.replace('\r\n', '\n').replace('\r', '\n')    
 
-
-def _extract_period(text: str) -> dict:
-    """Extract start/end timestamps from sreport header line."""
-    m = re.search(
-        r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s*-\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})',
-        text
-    )
+def _extract_period(clean: str) -> dict:
+    """Extract start/end timestamps from sreport header."""
+    period = {}
+    m = re.search(r'(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})', clean)
     if m:
-        return {'start': m.group(1), 'end': m.group(2)}
-    return {'start': None, 'end': None}
+        period['start'] = m.group(1)
+    matches = list(re.finditer(r'(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})', clean))
+    if len(matches) >= 2:
+        period['end'] = matches[-1].group(1)
+    return period
 
 
 def _parse_used_field(value: str) -> dict:
@@ -72,32 +71,6 @@ def _parse_used_field(value: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def parse_tres_utilization(raw: str) -> dict:
-    """
-    Parse:
-        sreport cluster utilization Start=<> End=<> -t percent --tres=cpu
-        sreport cluster utilization Start=<> End=<> -t percent --tres=gres/gpu
-
-    Confirmed column order on fortytwo:
-        Cluster  TRES Name  Allocated  Down  PLND Dow  Idle  Planned  Reported
-
-    GPU TRES name confirmed as: gres/gpu (NOT gpu)
-
-    Returns:
-    {
-        "cluster":   "fortytwo",
-        "tres_name": "cpu" | "gres/gpu",
-        "period":    {"start": "...", "end": "..."},
-        "metrics": {
-            "allocated":    29.22,
-            "down":          2.75,
-            "planned_down":  0.0,
-            "idle":         52.86,
-            "planned":      15.18,
-            "reported":    100.0
-        }
-    }
-    Returns {} if data not parseable.
-    """
     if not raw or not raw.strip():
         return {}
     try:
@@ -108,8 +81,8 @@ def parse_tres_utilization(raw: str) -> dict:
             'period':    _extract_period(clean),
             'metrics':   {}
         }
-
-        # Data row pattern: cluster  tres_name  XX.XX%  XX.XX%  XX.XX%  XX.XX%  XX.XX%  XX.XX%
+ 
+        # FIX: Try 8-column pattern first (with --tres flag: cluster tres_name pct*6)
         m = re.search(
             r'^\s*(\S+)\s+(\S+)\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%',
             clean, re.MULTILINE
@@ -125,60 +98,41 @@ def parse_tres_utilization(raw: str) -> dict:
                 'planned':      float(m.group(7)),
                 'reported':     float(m.group(8)),
             }
-
-        return result if result['metrics'] else {}
-
+            return result
+ 
+        # FIX: 7-column fallback for plain `sreport cluster utilization -t percent`
+        # (no --tres flag → no tres_name column)
+        m = re.search(
+            r'^\s*(\S+)\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%',
+            clean, re.MULTILINE
+        )
+        if m:
+            result['cluster']   = m.group(1)
+            result['tres_name'] = 'cpu'   # implicit when no --tres given
+            result['metrics']   = {
+                'allocated':    float(m.group(2)),
+                'down':         float(m.group(3)),
+                'planned_down': float(m.group(4)),
+                'idle':         float(m.group(5)),
+                'planned':      float(m.group(6)),
+                'reported':     float(m.group(7)),
+            }
+            return result
+ 
+        return {}
+ 
     except Exception as e:
         logger.error(f"parse_tres_utilization failed: {e}")
         return {}
-
+ 
 
 # ---------------------------------------------------------------------------
 # parse_account_utilization
 # ---------------------------------------------------------------------------
 
 def parse_account_utilization(raw: str) -> dict:
-    """
-    Parse:
-        sreport cluster AccountUtilizationByUser Start=<> End=<> -t hourper
-
-    Confirmed output structure:
-        Cluster  Account  Login  Proper Name  Used              Energy
-        -------- -------- ------ ------------ ----------------- ------
-        fortytwo                              16515432(100.00%)      0
-        fortytwo  acct1                        4388444(26.56%)       0
-        fortytwo  acct1   user1  Proper Name    100000(0.61%)        0
-
-    Row type detection:
-        identity tokens = everything between cluster name and Used field
-        0 identity tokens after cluster → cluster total
-        1 token → account subtotal
-        2+ tokens → user row (account + login + optional proper name)
-
-    Returns:
-    {
-        "cluster": "fortytwo",
-        "period": {"start": "...", "end": "..."},
-        "cluster_total": {"hours": 16515432, "percentage": 100.0},
-        "accounts": [
-            {
-                "account": "acct1",
-                "hours": 4388444,
-                "percentage": 26.56,
-                "users": [
-                    {
-                        "login": "user1",
-                        "proper_name": "Proper Name",
-                        "hours": 100000,
-                        "percentage": 0.61
-                    }
-                ]
-            }
-        ]
-    }
-    Sorted by hours descending.
-    Returns {} on failure.
-    """
+    print("PARSER VERSION: SSH_LAYER")
+ 
     if not raw or not raw.strip():
         return {}
     try:
@@ -189,69 +143,59 @@ def parse_account_utilization(raw: str) -> dict:
             'cluster_total': None,
             'accounts':      []
         }
-
+ 
         lines    = clean.splitlines()
         in_data  = False
-        acct_map = {}  # account_name → entry dict
-
+        acct_map = {}
+ 
         for line in lines:
             stripped = line.strip()
             if not stripped:
                 continue
-
-            # Separator line marks start of data
+ 
             if re.match(r'^-{3,}', stripped):
                 in_data = True
                 continue
-
+ 
             if not in_data:
                 continue
-
-            # Split fixed-width columns by 2+ spaces
-            tokens = [t for t in re.split(r'\s{2,}', stripped) if t.strip()]
-
-            if len(tokens) < 2:
+ 
+            # FIX: -t hourper columns are:
+            #   Cluster  Account  Login  Proper Name  Used(hours(pct))  Energy
+            # "Used" token looks like: 4388444(26.56%)
+            # Proper Name may be empty or multi-word; Energy column may be absent.
+            # Strategy: pull the Used token by pattern, everything before is identity.
+            m = m = re.search(r'(\d[\d,]*)\(([\d.]+)%\)\s*\d+\([\d.]+%\)\s*$', stripped)
+            if not m:
                 continue
-
-            # Identify Used field (has digits, may have percentage in parens)
-            # Energy is last (plain integer), Used is second-to-last
-            # Handle case where Energy is missing
-            last = tokens[-1]
-            if re.match(r'^\d+$', last) and not re.search(r'\(', last):
-                # Last is plain integer = Energy
-                if len(tokens) < 2:
-                    continue
-                used_raw  = tokens[-2]
-                identity  = tokens[:-2]
-            else:
-                # No Energy, last token is Used
-                used_raw = tokens[-1]
-                identity = tokens[:-1]
-
-            # Validate used_raw starts with digits
-            if not re.match(r'^\d', used_raw):
-                continue
-
-            used = _parse_used_field(used_raw)
-
-            # Identity tokens: [cluster] [account] [login] [proper_name...]
+ 
+            hours      = int(m.group(1).replace(',', ''))
+            percentage = float(m.group(2))
+            used       = {'hours': hours, 'percentage': percentage}
+ 
+            # Everything before the Used token is identity columns
+            identity_str = stripped[:m.start()].strip()
+            identity     = identity_str.split()
+ 
             cluster_name = identity[0] if len(identity) > 0 else None
             account_name = identity[1] if len(identity) > 1 else None
             login        = identity[2] if len(identity) > 2 else None
-            proper_name  = ' '.join(identity[3:]) if len(identity) > 3 else ''
-
+ 
+            # FIX: proper_name may occupy identity[3..] — ignore it, we only need login
+            # If login looks like a Used token someone accidentally left, clear it
+            if login and re.match(r'^\d+\([\d.]+%\)$', login):
+                login = None
+ 
             if not cluster_name:
                 continue
-
+ 
             if not result['cluster']:
                 result['cluster'] = cluster_name
-
+ 
             if account_name is None:
-                # Cluster total row
                 result['cluster_total'] = used
-
+ 
             elif login is None:
-                # Account subtotal row
                 if account_name not in acct_map:
                     entry = {
                         'account':    account_name,
@@ -264,31 +208,32 @@ def parse_account_utilization(raw: str) -> dict:
                 else:
                     acct_map[account_name]['hours']      = used['hours']
                     acct_map[account_name]['percentage'] = used['percentage']
-
+ 
             else:
-                # User row
                 if account_name not in acct_map:
-                    entry = {'account': account_name, 'hours': None, 'percentage': None, 'users': []}
+                    entry = {
+                        'account':    account_name,
+                        'hours':      None,
+                        'percentage': None,
+                        'users':      []
+                    }
                     acct_map[account_name] = entry
                     result['accounts'].append(entry)
-
+ 
                 acct_map[account_name]['users'].append({
                     'login':       login,
-                    'proper_name': proper_name,
+                    'proper_name': '',   # FIX: proper_name skipped cleanly
                     'hours':       used['hours'],
-                    'percentage':  used['percentage']
+                    'percentage':  used['percentage'],
                 })
-
-        # Sort accounts by hours descending
+ 
         result['accounts'].sort(key=lambda a: a['hours'] or 0, reverse=True)
-
         return result
-
+ 
     except Exception as e:
         logger.error(f"parse_account_utilization failed: {e}")
         return {}
-
-
+ 
 # ---------------------------------------------------------------------------
 # Helper extractors
 # ---------------------------------------------------------------------------
@@ -327,196 +272,6 @@ def get_all_users_sorted(account_data: dict, top_n: int = 15) -> list:
 # ---------------------------------------------------------------------------
 
 def parse_gpu_account_utilization(raw: str) -> dict:
-    """
-    Parse:
-        sreport cluster AccountUtilizationByUser Start=<> End=<> -T gres/gpu
-
-    Confirmed output format from fortytwo:
-        Cluster    Account    Login    Proper Name    TRES Name    Used
-        --------   --------   -----    -----------    ---------    ----
-        fortytwo   root                               gres/gpu     3739174
-        fortytwo   iiser                              gres/gpu     3328062
-        fortytwo   iiser      arnab                   gres/gpu     213443
-        fortytwo   iiser      ashish                  gres/gpu     51019
-
-    Key differences from parse_account_utilization():
-      - Extra column: TRES Name (always "gres/gpu") — must be stripped before
-        identity parsing
-      - Used is a plain integer (TRES minutes), never hours(percentage%)
-      - Proper Name is always blank on fortytwo — ignored safely
-      - No Energy column
-      - No cluster total row (fortytwo does not emit one for -T gres/gpu)
-
-    Returns:
-    {
-        "cluster": "fortytwo",
-        "period": {"start": "...", "end": "..."},
-        "accounts": [
-            {
-                "account": "iiser",
-                "gpu_minutes": 3328062,
-                "users": [
-                    {"login": "arnab",  "gpu_minutes": 213443},
-                    {"login": "ashish", "gpu_minutes":  51019}
-                ]
-            },
-            {
-                "account": "root",
-                "gpu_minutes": 3739174,
-                "users": []
-            }
-        ]
-    }
-    Sorted by gpu_minutes descending.
-    Returns {} on failure or empty input.
-    """
-    if not raw or not raw.strip():
-        return {}
-    try:
-        clean = _clean(raw)
-        result = {
-            'cluster':  None,
-            'period':   _extract_period(clean),
-            'accounts': []
-        }
-
-        lines    = clean.splitlines()
-        in_data  = False
-        acct_map = {}
-
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-
-            if re.match(r'^-{3,}', stripped):
-                in_data = True
-                continue
-
-            if not in_data:
-                continue
-
-            # Split by 2+ spaces — handles inconsistent left-aligned spacing
-            tokens = [t for t in re.split(r'\s{2,}', stripped) if t.strip()]
-
-            if len(tokens) < 3:
-                continue
-
-            # Last token is Used (plain integer TRES minutes)
-            # Second-to-last is TRES Name (always "gres/gpu") — discard it
-            # Everything before that is identity: cluster [account] [login] [proper_name]
-            used_raw  = tokens[-1]
-            # tokens[-2] is TRES Name — skip it
-            identity  = tokens[:-2]
-
-            # Validate Used is a plain integer
-            if not re.match(r'^\d+$', used_raw):
-                continue
-
-            gpu_minutes = int(used_raw)
-
-            cluster_name = identity[0] if len(identity) > 0 else None
-
-            account_name = None
-            login = None
-
-            if len(identity) > 1:
-             merged = identity[1].split(maxsplit=1)
-
-             account_name = merged[0]
-
-            if len(merged) > 1:
-              login = merged[1]
-
-# If login was already separated properly, keep it
-            if len(identity) > 2:
-                 login = identity[2]
-            if not cluster_name:
-                continue
-
-            if not result['cluster']:
-                result['cluster'] = cluster_name
-
-            if account_name is None:
-                # Cluster-level row with no account — skip (rare, ignore)
-                continue
-
-            elif login is None:
-                # Account subtotal row
-                if account_name not in acct_map:
-                    entry = {
-                        'account':     account_name,
-                        'gpu_minutes': gpu_minutes,
-                        'users':       []
-                    }
-                    acct_map[account_name] = entry
-                    result['accounts'].append(entry)
-                else:
-                    acct_map[account_name]['gpu_minutes'] = gpu_minutes
-
-            else:
-                # User row
-                if account_name not in acct_map:
-                    entry = {
-                        'account':     account_name,
-                        'gpu_minutes': None,
-                        'users':       []
-                    }
-                    acct_map[account_name] = entry
-                    result['accounts'].append(entry)
-
-                acct_map[account_name]['users'].append({
-                    'login':       login,
-                    'gpu_minutes': gpu_minutes
-                })
-
-        # Sort accounts by gpu_minutes descending
-        result['accounts'].sort(key=lambda a: a['gpu_minutes'] or 0, reverse=True)
-
-        return result if result['accounts'] else {}
-
-    except Exception as e:
-        logger.error(f"parse_gpu_account_utilization failed: {e}")
-        return {}
-
-
-# ---------------------------------------------------------------------------
-# parse_gpu_account_pct
-# ---------------------------------------------------------------------------
-
-def parse_gpu_account_pct(raw: str) -> dict:
-    """
-    Parse:
-        sreport cluster AccountUtilizationByUser Start=<> End=<> -t percent -T gres/gpu
-
-    This command produces percentage output WITHOUT a TRES Name column.
-    Confirmed format:
-        Cluster    Account    Login    Proper Name    Used
-        --------   --------   -----    -----------    ----
-        fortytwo   root                               49.74%
-        fortytwo   iiser                              44.27%
-        fortytwo   iiser      arnab                    2.84%
-        fortytwo   iiser      madhu                    9.38%
-
-    Key differences from parse_gpu_account_utilization():
-      - No TRES Name column
-      - Used is a percentage string (e.g. "49.74%"), not plain integer
-      - Same row structure: cluster, [account], [login], [proper_name], used
-
-    Returns:
-    {
-        "cluster": "fortytwo",
-        "period": {"start": "...", "end": "..."},
-        "accounts": [
-            {
-                "account": "root",
-                "gpu_pct": 49.74,
-                "users": [...]
-            }
-        ]
-    }
-    Returns {} on failure or empty input.
-    """
     if not raw or not raw.strip():
         return {}
     try:
@@ -548,9 +303,111 @@ def parse_gpu_account_pct(raw: str) -> dict:
             if len(tokens) < 2:
                 continue
 
-            # Last token is Used — must be a percentage
             used_raw = tokens[-1]
             identity = tokens[:-1]
+
+            # FIX: strip TRES Name column (e.g. 'gres/gpu') from identity
+            identity = [t for t in identity if not t.startswith('gres/')]
+
+            if not re.match(r'^\d+$', used_raw):
+                continue
+
+            gpu_minutes  = int(used_raw)
+            cluster_name = identity[0] if len(identity) > 0 else None
+
+            account_name = None
+            login        = None
+
+            if len(identity) > 1:
+                merged       = identity[1].split(maxsplit=1)
+                account_name = merged[0]
+                if len(merged) > 1:
+                    login = merged[1]
+
+            if len(identity) > 2:
+                login = identity[2]
+
+            if not cluster_name:
+                continue
+
+            if not result['cluster']:
+                result['cluster'] = cluster_name
+
+            if account_name is None:
+                continue
+
+            elif login is None:
+                if account_name not in acct_map:
+                    entry = {
+                        'account':     account_name,
+                        'gpu_minutes': gpu_minutes,
+                        'users':       []
+                    }
+                    acct_map[account_name] = entry
+                    result['accounts'].append(entry)
+                else:
+                    acct_map[account_name]['gpu_minutes'] = gpu_minutes
+
+            else:
+                if account_name not in acct_map:
+                    entry = {
+                        'account':     account_name,
+                        'gpu_minutes': None,
+                        'users':       []
+                    }
+                    acct_map[account_name] = entry
+                    result['accounts'].append(entry)
+
+                acct_map[account_name]['users'].append({
+                    'login':       login,
+                    'gpu_minutes': gpu_minutes
+                })
+
+        result['accounts'].sort(key=lambda a: a['gpu_minutes'] or 0, reverse=True)
+        return result if result['accounts'] else {}
+
+    except Exception as e:
+        logger.error(f"parse_gpu_account_utilization failed: {e}")
+        return {}
+
+
+def parse_gpu_account_pct(raw: str) -> dict:
+    if not raw or not raw.strip():
+        return {}
+    try:
+        clean = _clean(raw)
+        result = {
+            'cluster':  None,
+            'period':   _extract_period(clean),
+            'accounts': []
+        }
+
+        lines    = clean.splitlines()
+        in_data  = False
+        acct_map = {}
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            if re.match(r'^-{3,}', stripped):
+                in_data = True
+                continue
+
+            if not in_data:
+                continue
+
+            tokens = [t for t in re.split(r'\s{2,}', stripped) if t.strip()]
+
+            if len(tokens) < 2:
+                continue
+
+            used_raw = tokens[-1]
+            identity = tokens[:-1]
+
+            # FIX: strip TRES Name column (e.g. 'gres/gpu') from identity
+            identity = [t for t in identity if not t.startswith('gres/')]
 
             pct_match = re.match(r'^([\d.]+)%$', used_raw)
             if not pct_match:
@@ -560,17 +417,14 @@ def parse_gpu_account_pct(raw: str) -> dict:
             cluster_name = identity[0] if len(identity) > 0 else None
 
             account_name = None
-            login = None
+            login        = None
 
             if len(identity) > 1:
-                merged = identity[1].split(maxsplit=1)
-
+                merged       = identity[1].split(maxsplit=1)
                 account_name = merged[0]
+                if len(merged) > 1:
+                    login = merged[1]
 
-            if len(merged) > 1:
-             login = merged[1]
-
-# If login was already separated properly, keep it
             if len(identity) > 2:
                 login = identity[2]
 
@@ -608,7 +462,6 @@ def parse_gpu_account_pct(raw: str) -> dict:
     except Exception as e:
         logger.error(f"parse_gpu_account_pct failed: {e}")
         return {}
-
 
 # ---------------------------------------------------------------------------
 # merge_gpu_account_data

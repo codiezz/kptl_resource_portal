@@ -1,26 +1,3 @@
-"""
-pdf_account_report.py
-
-Generates an account-specific utilization PDF report.
-
-Sections:
-  1. Cover Page
-  2. Account Summary Table
-  3. Per-Account Utilization (table + horizontal bar chart)
-  4. User Breakdown Table
-  5. Observations
-
-All data comes from parse_account_utilization() — zero hardcoded values.
-Graceful degradation: missing data shows notice, never crashes.
-
-Usage:
-    from pdf_account_report import generate_account_report
-    pdf_bytes = generate_account_report({
-        "cluster":  "fortytwo",
-        "period":   {"start": "2025-10-01T00:00:00", "end": "2025-12-31T23:59:59"},
-        "accounts": {...},  # from parse_account_utilization(), or {}
-    })
-"""
 
 import io
 import os
@@ -134,6 +111,82 @@ def _make_accounts_pie(accounts: list, path: str, top_n: int = 8) -> bool:
     plt.close()
     return True
 
+def _make_top_cpu_hbar(users: list, path: str, top_n: int = 10) -> bool:
+    top = sorted(users, key=lambda u: u['cpu_hours'] or 0, reverse=True)[:top_n]
+    top = [u for u in top if (u['cpu_hours'] or 0) > 0]
+    if not top:
+        return False
+
+    labels = [u['login'] for u in reversed(top)]
+    values = [u['cpu_hours'] or 0 for u in reversed(top)]
+    clrs   = CHART_COLORS[:len(labels)]
+
+    fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
+    bars = ax.barh(labels, values, color=clrs, height=0.6, edgecolor='white')
+
+    max_val = max(values) if values else 1
+    for bar, val in zip(bars, values):
+        ax.text(
+            bar.get_width() + max_val * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:,.1f}', va='center', ha='left',
+            fontsize=8, color='#2c3e50'
+        )
+
+    ax.set_xlabel("CPU Hours", fontsize=9, color='#2c3e50')
+    ax.set_title(f"Top {len(top)} CPU Users",
+                 fontsize=10, fontweight='bold', color='#1a3a5c')
+    ax.set_xlim(0, max_val * 1.18)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#cccccc')
+    ax.spines['bottom'].set_color('#cccccc')
+    ax.tick_params(colors='#555555', labelsize=8.5)
+    ax.xaxis.grid(True, linestyle='--', alpha=0.4, color='#aaaaaa')
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    return True
+
+
+def _make_top_gpu_hbar(users: list, path: str, top_n: int = 10) -> bool:
+    top = [u for u in users if (u.get('gpu_hours') or 0) > 0]
+    top = sorted(top, key=lambda u: u['gpu_hours'] or 0, reverse=True)[:top_n]
+    if not top:
+        return False
+
+    labels = [u['login'] for u in reversed(top)]
+    values = [u['gpu_hours'] or 0 for u in reversed(top)]
+    clrs   = CHART_COLORS[:len(labels)]
+
+    fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
+    bars = ax.barh(labels, values, color=clrs, height=0.6, edgecolor='white')
+
+    max_val = max(values) if values else 1
+    for bar, val in zip(bars, values):
+        ax.text(
+            bar.get_width() + max_val * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f'{val:,.1f}', va='center', ha='left',
+            fontsize=8, color='#2c3e50'
+        )
+
+    ax.set_xlabel("GPU Hours", fontsize=9, color='#2c3e50')
+    ax.set_title(f"Top {len(top)} GPU Users",
+                 fontsize=10, fontweight='bold', color='#1a3a5c')
+    ax.set_xlim(0, max_val * 1.18)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color('#cccccc')
+    ax.spines['bottom'].set_color('#cccccc')
+    ax.tick_params(colors='#555555', labelsize=8.5)
+    ax.xaxis.grid(True, linestyle='--', alpha=0.4, color='#aaaaaa')
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    return True
 
 # ---------------------------------------------------------------------------
 # Header / footer
@@ -204,32 +257,62 @@ def _account_observations(accounts: dict) -> list:
 
     return obs[:5]
 
+def _account_insights(users: list, totals: dict) -> list:
+    insights = []
+
+    if not users:
+        return ["No usage data available for this account."]
+
+    total_cpu = totals.get('cpu_hours', 0) or 0
+    total_gpu = totals.get('gpu_hours', 0) or 0
+
+    active = [u for u in users if (u['cpu_hours'] or 0) > 0 or (u['gpu_hours'] or 0) > 0]
+    insights.append(
+        f"{len(active)} of {len(users)} users actively used resources during this period."
+    )
+
+    if total_cpu > 0:
+        top3_cpu = sum(sorted([u['cpu_hours'] or 0 for u in users], reverse=True)[:3])
+        pct = (top3_cpu / total_cpu) * 100
+        insights.append(f"Top 3 users contributed {pct:.1f}% of CPU usage.")
+
+    if total_gpu > 0:
+        top5_gpu = sum(sorted([u['gpu_hours'] or 0 for u in users], reverse=True)[:5])
+        pct = (top5_gpu / total_gpu) * 100
+        insights.append(f"Top 5 users account for {pct:.1f}% of GPU utilization.")
+
+        if total_gpu > total_cpu:
+            insights.append("Account workload appears GPU-intensive.")
+        elif total_cpu > 0 and total_gpu / total_cpu < 0.1:
+            insights.append("Account workload is predominantly CPU-based.")
+    else:
+        insights.append("No GPU usage recorded for this account.")
+
+    no_gpu = sum(1 for u in users if (u['gpu_hours'] or 0) == 0)
+    if no_gpu:
+        insights.append(f"{no_gpu} user(s) had no GPU usage.")
+
+    inactive = len(users) - len(active)
+    if inactive:
+        insights.append(f"{inactive} user(s) recorded no activity in this period.")
+
+    return insights[:6]
 
 # ---------------------------------------------------------------------------
 # Main generator
 # ---------------------------------------------------------------------------
 
 def generate_account_report(data: dict) -> bytes:
-    """
-    Generate account utilization PDF report.
 
-    Args:
-        data = {
-            "cluster":  "fortytwo",
-            "period":   {"start": "...", "end": "..."},
-            "accounts": dict from parse_account_utilization(), or {}
-        }
-
-    Returns: PDF as bytes.
-    """
     cluster_name = data.get("cluster", "Unknown")
+    account_name = data.get("account", "Unknown")
     period       = data.get("period", {})
-    accounts     = data.get("accounts", {})
+    users        = data.get("users", [])
+    totals       = data.get("account_totals", {})
 
     start_str    = (period.get("start") or "")[:10] or "N/A"
     end_str      = (period.get("end")   or "")[:10] or "N/A"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-    acct_list    = accounts.get("accounts", [])
 
     s = {
         'title': ParagraphStyle(
@@ -264,25 +347,25 @@ def generate_account_report(data: dict) -> bytes:
             HRFlowable(width="100%", thickness=1, color=LIGHT_BLUE, spaceAfter=10)
         ]
 
-    tmp_bar = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_acct_bar_')
-    tmp_pie = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_acct_pie_')
-    tmp_bar.close()
-    tmp_pie.close()
-    bar_ok = False
-    pie_ok = False
+    tmp_cpu = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_acct_cpu_')
+    tmp_gpu = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_acct_gpu_')
+    tmp_cpu.close()
+    tmp_gpu.close()
+    cpu_chart_ok = False
+    gpu_chart_ok = False
 
     try:
-        if acct_list:
-            bar_ok = _make_accounts_hbar(acct_list, tmp_bar.name)
-            pie_ok = _make_accounts_pie(acct_list, tmp_pie.name)
+        if users:
+            cpu_chart_ok = _make_top_cpu_hbar(users, tmp_cpu.name)
+            gpu_chart_ok = _make_top_gpu_hbar(users, tmp_gpu.name)
 
         pdf_bytes = _build_pdf(
-            cluster_name, start_str, end_str, generated_at,
-            s, section_hdr, accounts, acct_list,
-            bar_ok, pie_ok, tmp_bar.name, tmp_pie.name
+            cluster_name, account_name, start_str, end_str, generated_at,
+            s, section_hdr, users, totals,
+            cpu_chart_ok, gpu_chart_ok, tmp_cpu.name, tmp_gpu.name
         )
     finally:
-        for p in [tmp_bar.name, tmp_pie.name]:
+        for p in [tmp_cpu.name, tmp_gpu.name]:
             try:
                 os.unlink(p)
             except OSError:
@@ -292,9 +375,9 @@ def generate_account_report(data: dict) -> bytes:
 
 
 def _build_pdf(
-    cluster_name, start_str, end_str, generated_at,
-    s, section_hdr, accounts, acct_list,
-    bar_ok, pie_ok, bar_path, pie_path
+    cluster_name, account_name, start_str, end_str, generated_at,
+    s, section_hdr, users, totals,
+    cpu_chart_ok, gpu_chart_ok, cpu_chart_path, gpu_chart_path
 ) -> bytes:
 
     buf = io.BytesIO()
@@ -314,6 +397,32 @@ def _build_pdf(
         onPage=_header_footer(cluster_name, generated_at)
     )])
     story = []
+
+    # ----------------------------------------------------------------
+    # Pre-compute summary values used across pages
+    # ----------------------------------------------------------------
+    total_cpu_hours = totals.get('cpu_hours', 0) or 0
+    total_gpu_hours = totals.get('gpu_hours', 0) or 0
+    account_cpu_pct = totals.get('cpu_pct', 0) or 0
+    account_gpu_pct = totals.get('gpu_pct', 0) or 0
+
+    total_users  = len(users)
+    active_users = sum(
+        1 for u in users
+        if (u['cpu_hours'] or 0) > 0 or (u['gpu_hours'] or 0) > 0
+    )
+
+    top_cpu_user = "N/A"
+    if users:
+        top_cpu = max(users, key=lambda u: u['cpu_hours'] or 0)
+        if (top_cpu['cpu_hours'] or 0) > 0:
+            top_cpu_user = top_cpu['login']
+
+    top_gpu_user = "N/A"
+    gpu_users = [u for u in users if (u['gpu_hours'] or 0) > 0]
+    if gpu_users:
+        top_gpu = max(gpu_users, key=lambda u: u['gpu_hours'] or 0)
+        top_gpu_user = top_gpu['login']
 
     # ----------------------------------------------------------------
     # PAGE 1 — COVER
@@ -338,18 +447,15 @@ def _build_pdf(
     story.append(Spacer(1, 0.6 * cm))
     story.append(HRFlowable(width="70%", thickness=1.5, color=LIGHT_BLUE, spaceAfter=20))
 
-    total        = accounts.get('cluster_total', {})
-    total_hours  = total.get('hours', 0) if total else 0
-    n_accounts   = len(acct_list)
-    total_users  = sum(len(a.get('users', [])) for a in acct_list)
-
     cover_rows = [
+        ["Account",        account_name],
         ["Cluster",        cluster_name.upper()],
         ["Report Period",  f"{start_str}  →  {end_str}"],
         ["Generated",      generated_at],
-        ["Total CPU Hours",f"{total_hours:,}" if total_hours else "N/A"],
-        ["Active Accounts",str(n_accounts)],
-        ["Active Users",   str(total_users)],
+        ["Total CPU Hours", f"{total_cpu_hours:,.1f}" if total_cpu_hours else "N/A"],
+        ["Total GPU Hours", f"{total_gpu_hours:,.1f}" if total_gpu_hours else "N/A"],
+        ["Total Users",    str(total_users)],
+        ["Active Users",   str(active_users)],
     ]
     ct = Table(cover_rows, colWidths=[5 * cm, 9 * cm])
     ct.setStyle(TableStyle([
@@ -365,141 +471,244 @@ def _build_pdf(
     story.append(PageBreak())
 
     # ----------------------------------------------------------------
-    # PAGE 2 — ACCOUNT SUMMARY TABLE + CHARTS
+    # PAGE 2 — EXECUTIVE ACCOUNT SUMMARY
     # ----------------------------------------------------------------
-    story += section_hdr("Account Utilization Summary")
+    story += section_hdr("Executive Account Summary")
 
-    if acct_list:
-        rows = [["Account", "CPU Hours", "Usage %", "Active Users"]]
-        for a in acct_list[:15]:
-            rows.append([
-                a['account'],
-                f"{a['hours']:,}"         if a['hours']      else "—",
-                f"{a['percentage']:.2f}%" if a['percentage'] else "—",
-                str(len(a.get('users', []))),
+    summary_rows = [
+        ["Metric", "Value"],
+        ["Account Name",   account_name],
+        ["Total Users",    str(total_users)],
+        ["Active Users",   str(active_users)],
+        ["Total CPU Hours", f"{total_cpu_hours:,.1f}" if total_cpu_hours else "N/A"],
+        ["Total GPU Hours", f"{total_gpu_hours:,.1f}" if total_gpu_hours else "N/A"],
+        ["CPU Usage %",    f"{account_cpu_pct:.2f}%" if account_cpu_pct else "N/A"],
+        ["GPU Usage %",    f"{account_gpu_pct:.2f}%" if account_gpu_pct else "N/A"],
+        ["Top CPU User",   top_cpu_user],
+        ["Top GPU User",   top_gpu_user],
+    ]
+    st = Table(summary_rows, colWidths=[7 * cm, 7 * cm])
+    st.setStyle(TableStyle([
+        ('BACKGROUND',  (0, 0), (-1, 0),  DARK_BLUE),
+        ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
+        ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+        ('FONTSIZE',    (0, 0), (-1, 0),  10),
+        ('FONTNAME',    (0, 1), (0, -1),  'Helvetica-Bold'),
+        ('FONTNAME',    (1, 1), (1, -1),  'Helvetica'),
+        ('TEXTCOLOR',   (0, 1), (0, -1),  DARK_BLUE),
+        ('TEXTCOLOR',   (1, 1), (1, -1),  DARK_GREY),
+        *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
+          for i in range(1, len(summary_rows), 2)],
+        ('FONTSIZE',    (0, 1), (-1, -1), 10),
+        ('ROWPADDING',  (0, 0), (-1, -1), 7),
+        ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
+        ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
+    ]))
+    story.append(st)
+    story.append(Spacer(1, 0.8 * cm))
+
+    story.append(Paragraph("Key Insights", s['section']))
+    story.append(HRFlowable(width="100%", thickness=1, color=LIGHT_BLUE, spaceAfter=10))
+    for i, ins in enumerate(_account_insights(users, totals), 1):
+        story.append(Paragraph(f"<b>{i}.</b>  {ins}", s['obs_item']))
+
+    story.append(PageBreak())
+
+    # ----------------------------------------------------------------
+    # PAGE 3 — USER RESOURCE CONSUMPTION TABLE
+    # ----------------------------------------------------------------
+    story += section_hdr("User Resource Consumption")
+
+    if users:
+        sorted_users = sorted(
+            users,
+            key=lambda u: (u['cpu_hours'] or 0) + (u['gpu_hours'] or 0),
+            reverse=True
+        )
+
+        user_rows = [["Login", "CPU Hours", "CPU %", "GPU Hours", "GPU %", "Resource Profile"]]
+        for u in sorted_users:
+            user_rows.append([
+                u['login'],
+                f"{u['cpu_hours']:,.1f}" if u['cpu_hours'] else "0.0",
+                f"{u['cpu_pct']:.2f}%"   if u['cpu_pct']   else "0.00%",
+                f"{u['gpu_hours']:,.1f}" if u['gpu_hours'] else "0.0",
+                f"{u['gpu_pct']:.2f}%"   if u['gpu_pct']   else "0.00%",
+                u.get('profile', 'Inactive'),
             ])
-        t = Table(rows, colWidths=[6 * cm, 4 * cm, 3.5 * cm, 3.5 * cm])
-        t.setStyle(TableStyle([
+
+        ut = Table(user_rows, colWidths=[3.5 * cm, 2.7 * cm, 2.2 * cm, 2.7 * cm, 2.2 * cm, 3.4 * cm])
+        ut.setStyle(TableStyle([
             ('BACKGROUND',  (0, 0), (-1, 0),  DARK_BLUE),
             ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
             ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
-            ('FONTSIZE',    (0, 0), (-1, 0),  10),
+            ('FONTSIZE',    (0, 0), (-1, 0),  9),
+            ('ALIGN',       (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
+            *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
+              for i in range(1, len(user_rows), 2)],
+            ('FONTSIZE',    (0, 1), (-1, -1), 9),
+            ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
+            ('ROWPADDING',  (0, 0), (-1, -1), 6),
+            ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
+            ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
+        ]))
+        story.append(ut)
+    else:
+        story.append(Paragraph(
+            "No user-level data available for this account.", s['unavailable']
+        ))
+
+    story.append(PageBreak())
+
+    # ----------------------------------------------------------------
+    # PAGE 4 — TOP CPU CONSUMERS
+    # ----------------------------------------------------------------
+    story += section_hdr("Top CPU Consumers")
+
+    cpu_ranked = sorted(
+        [u for u in users if (u['cpu_hours'] or 0) > 0],
+        key=lambda u: u['cpu_hours'] or 0, reverse=True
+    )[:10]
+
+    if cpu_ranked:
+        if cpu_chart_ok and os.path.exists(cpu_chart_path) and os.path.getsize(cpu_chart_path) > 0:
+            story.append(Image(cpu_chart_path, width=content_w, height=content_w * 0.5))
+            story.append(Spacer(1, 0.5 * cm))
+
+        rows = [["User", "CPU Hours", "CPU %", "Share within Account"]]
+        for u in cpu_ranked:
+            share = (u['cpu_hours'] / total_cpu_hours * 100) if total_cpu_hours else 0
+            rows.append([
+                u['login'],
+                f"{u['cpu_hours']:,.1f}",
+                f"{u['cpu_pct']:.2f}%" if u['cpu_pct'] else "0.00%",
+                f"{share:.1f}%",
+            ])
+        ct4 = Table(rows, colWidths=[4.5 * cm, 4 * cm, 3 * cm, 4.5 * cm])
+        ct4.setStyle(TableStyle([
+            ('BACKGROUND',  (0, 0), (-1, 0),  MID_BLUE),
+            ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
+            ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+            ('FONTSIZE',    (0, 0), (-1, 0),  9.5),
             ('ALIGN',       (1, 0), (-1, -1), 'CENTER'),
             ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
             *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
               for i in range(1, len(rows), 2)],
             ('FONTSIZE',    (0, 1), (-1, -1), 9.5),
             ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
-            ('ROWPADDING',  (0, 0), (-1, -1), 7),
+            ('ROWPADDING',  (0, 0), (-1, -1), 6),
             ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
-            ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
+            ('LINEBELOW',   (0, 0), (-1, 0),  1, MID_BLUE),
         ]))
-        story.append(t)
-        story.append(Spacer(1, 0.7 * cm))
+        story.append(ct4)
+        story.append(Spacer(1, 0.5 * cm))
 
-        # Charts side by side
-        charts = []
-        if bar_ok and os.path.exists(bar_path) and os.path.getsize(bar_path) > 0:
-            charts.append(Image(bar_path, width=9 * cm, height=6 * cm))
-        if pie_ok and os.path.exists(pie_path) and os.path.getsize(pie_path) > 0:
-            charts.append(Image(pie_path, width=8 * cm, height=6 * cm))
-
-        if len(charts) == 2:
-            ct2 = Table([charts], colWidths=[9.5 * cm, 8.5 * cm])
-            ct2.setStyle(TableStyle([
-                ('ALIGN',  (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            story.append(ct2)
-        elif len(charts) == 1:
-            story.append(Table([charts], colWidths=[content_w]))
-
-    else:
-        notice = Table(
-            [[Paragraph(
-                "Account utilization data was unavailable for this reporting period.",
-                s['unavailable']
-            )]],
-            colWidths=[content_w]
-        )
-        notice.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), LIGHT_GREY),
-            ('BOX',        (0, 0), (-1, -1), 1, colors.HexColor("#dde3ea")),
-            ('ROWPADDING', (0, 0), (-1, -1), 24),
-        ]))
-        story.append(notice)
-
-    story.append(PageBreak())
-
-    # ----------------------------------------------------------------
-    # PAGE 3 — USER BREAKDOWN PER ACCOUNT
-    # ----------------------------------------------------------------
-    story += section_hdr("User Breakdown by Account")
-
-    if acct_list:
-        for acct in acct_list[:10]:
-            users = acct.get('users', [])
-            if not users:
-                continue
-
+        top3_share = sum(u['cpu_hours'] or 0 for u in cpu_ranked[:3])
+        if total_cpu_hours:
+            pct = top3_share / total_cpu_hours * 100
             story.append(Paragraph(
-                f"Account: <b>{acct['account']}</b>  "
-                f"({acct['hours']:,} CPU hrs, {acct['percentage']:.2f}%)"
-                if acct.get('hours') else f"Account: <b>{acct['account']}</b>",
+                f"The top 3 CPU users account for {pct:.1f}% of this account's total CPU usage.",
                 s['body']
             ))
-
-            user_rows = [["Login", "Proper Name", "CPU Hours", "Usage %"]]
-            for u in sorted(users, key=lambda x: x.get('hours') or 0, reverse=True):
-                user_rows.append([
-                    u.get('login', ''),
-                    u.get('proper_name', '') or '—',
-                    f"{u['hours']:,}"         if u.get('hours')      else "—",
-                    f"{u['percentage']:.2f}%" if u.get('percentage') else "—",
-                ])
-
-            ut = Table(user_rows, colWidths=[4 * cm, 5 * cm, 4 * cm, 4 * cm])
-            ut.setStyle(TableStyle([
-                ('BACKGROUND',  (0, 0), (-1, 0),  MID_BLUE),
-                ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
-                ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
-                ('FONTSIZE',    (0, 0), (-1, 0),  9),
-                ('ALIGN',       (2, 0), (-1, -1), 'CENTER'),
-                ('ALIGN',       (0, 0), (1, -1),  'LEFT'),
-                *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
-                  for i in range(1, len(user_rows), 2)],
-                ('FONTSIZE',    (0, 1), (-1, -1), 9),
-                ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
-                ('ROWPADDING',  (0, 0), (-1, -1), 6),
-                ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
-                ('LINEBELOW',   (0, 0), (-1, 0),  1, MID_BLUE),
-            ]))
-            story.append(ut)
-            story.append(Spacer(1, 0.5 * cm))
     else:
         story.append(Paragraph(
-            "No user breakdown data available.", s['unavailable']
+            "No CPU usage recorded for any user in this account.", s['unavailable']
         ))
 
     story.append(PageBreak())
 
     # ----------------------------------------------------------------
-    # PAGE 4 — OBSERVATIONS
+    # PAGE 5 — TOP GPU CONSUMERS
     # ----------------------------------------------------------------
-    story += section_hdr("Observations")
+    story += section_hdr("Top GPU Consumers")
+
+    gpu_ranked = sorted(
+        [u for u in users if (u['gpu_hours'] or 0) > 0],
+        key=lambda u: u['gpu_hours'] or 0, reverse=True
+    )[:10]
+
+    if gpu_ranked:
+        if gpu_chart_ok and os.path.exists(gpu_chart_path) and os.path.getsize(gpu_chart_path) > 0:
+            story.append(Image(gpu_chart_path, width=content_w, height=content_w * 0.5))
+            story.append(Spacer(1, 0.5 * cm))
+
+        rows = [["User", "GPU Hours", "GPU %", "Share within Account"]]
+        for u in gpu_ranked:
+            share = (u['gpu_hours'] / total_gpu_hours * 100) if total_gpu_hours else 0
+            rows.append([
+                u['login'],
+                f"{u['gpu_hours']:,.1f}",
+                f"{u['gpu_pct']:.2f}%" if u['gpu_pct'] else "0.00%",
+                f"{share:.1f}%",
+            ])
+        ct5 = Table(rows, colWidths=[4.5 * cm, 4 * cm, 3 * cm, 4.5 * cm])
+        ct5.setStyle(TableStyle([
+            ('BACKGROUND',  (0, 0), (-1, 0),  MID_BLUE),
+            ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
+            ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+            ('FONTSIZE',    (0, 0), (-1, 0),  9.5),
+            ('ALIGN',       (1, 0), (-1, -1), 'CENTER'),
+            ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
+            *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
+              for i in range(1, len(rows), 2)],
+            ('FONTSIZE',    (0, 1), (-1, -1), 9.5),
+            ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
+            ('ROWPADDING',  (0, 0), (-1, -1), 6),
+            ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
+            ('LINEBELOW',   (0, 0), (-1, 0),  1, MID_BLUE),
+        ]))
+        story.append(ct5)
+        story.append(Spacer(1, 0.5 * cm))
+
+        top3_share = sum(u['gpu_hours'] or 0 for u in gpu_ranked[:3])
+        if total_gpu_hours:
+            pct = top3_share / total_gpu_hours * 100
+            story.append(Paragraph(
+                f"The top 3 GPU users account for {pct:.1f}% of this account's total GPU usage.",
+                s['body']
+            ))
+    else:
+        story.append(Paragraph(
+            "No GPU usage recorded for any user in this account.", s['unavailable']
+        ))
+
+    story.append(PageBreak())
+
+    # ----------------------------------------------------------------
+    # PAGE 6 — ACCOUNT UTILIZATION INSIGHTS
+    # ----------------------------------------------------------------
+    story += section_hdr("Account Utilization Insights")
     story.append(Paragraph(
-        f"Automatically generated observations for {cluster_name.upper()} "
-        f"account utilization, period {start_str} to {end_str}.",
+        f"Derived analytics for account <b>{account_name}</b> on cluster "
+        f"{cluster_name.upper()}, period {start_str} to {end_str}.",
         s['body']
     ))
     story.append(Spacer(1, 0.4 * cm))
 
-    for i, o in enumerate(_account_observations(accounts), 1):
-        story.append(Paragraph(f"<b>{i}.</b>  {o}", s['obs_item']))
+    insights6 = list(_account_insights(users, totals))
+
+    if total_cpu_hours and total_gpu_hours:
+        ratio = total_cpu_hours / total_gpu_hours
+        insights6.append(f"CPU-to-GPU usage ratio is approximately {ratio:.1f}:1.")
+    elif total_cpu_hours and not total_gpu_hours:
+        insights6.append("This account shows CPU-only usage with no GPU activity.")
+
+    inactive_users = [u['login'] for u in users
+                       if (u['cpu_hours'] or 0) == 0 and (u['gpu_hours'] or 0) == 0]
+    if inactive_users:
+        if len(inactive_users) <= 8:
+            insights6.append(
+                "Inactive users (no recorded usage): " + ", ".join(inactive_users) + "."
+            )
+        else:
+            insights6.append(f"{len(inactive_users)} users recorded no usage during this period.")
+
+    for i, ins in enumerate(insights6, 1):
+        story.append(Paragraph(f"<b>{i}.</b>  {ins}", s['obs_item']))
 
     doc.build(story)
     return buf.getvalue()
-
 
 # ---------------------------------------------------------------------------
 # Standalone test — zero dummy data, structure test only
