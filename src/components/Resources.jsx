@@ -34,11 +34,12 @@ function DropdownCard({ title, items }) {
       >
         <ul style={styles.list}>
           {items.map((item, index) => (
-            <ListItem
-              key={index}
-              label={item.label}
-              host={item.host}
-            />
+           <ListItem
+  key={index}
+  label={item.label}
+  host={item.host}
+  clusterId={item.clusterId}
+/>
           ))}
         </ul>
       </div>
@@ -46,7 +47,7 @@ function DropdownCard({ title, items }) {
   );
 }
 
-function ListItem({ label, host }) {
+function ListItem({ label, host, clusterId }) {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -56,10 +57,6 @@ function ListItem({ label, host }) {
     }
   };
 
-  const clusterId = label
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[():]/g, "");
 
   return (
     <li
@@ -127,22 +124,22 @@ function ListItem({ label, host }) {
 
 function Resources() {
   const clusterItems = [
-    { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: import.meta.env.VITE_CMS_HOST, clusterId: "cms-cluster" },
-    { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: import.meta.env.VITE_FERMI_HOST, clusterId: "fermi-cluster" },
-    { label: "Athena Cluster (Dr. Mukul) : CPU", host: import.meta.env.VITE_ATHENA_HOST, clusterId: "athena-cluster" },
-    { label: "Charu Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_CHARU_HOST, clusterId: "charu-cluster" },
-    { label: "Megha Cluster (Dr. Neena) : CPU", host: import.meta.env.VITE_MEGHA_HOST, clusterId: "megha-cluster" },
-    { label: "Taurus Cluster (Dr. Arun) : CPU", host: import.meta.env.VITE_TAURUS_HOST, clusterId: "taurus-cluster" },
-    { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: import.meta.env.VITE_LAMMER_HOST, clusterId: "lammer-cluster" },
-    { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: import.meta.env.VITE_MATHS_HOST, clusterId: "maths-cluster" },
-    { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: import.meta.env.VITE_BHOOMI_HOST, clusterId: "bhoomi-cluster" },
-    { label: "Violin Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VIOLIN_HOST, clusterId: "violin-cluster" },
-    { label: "Veena Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VEENA_HOST, clusterId: "veena-cluster" },
-    { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_ONSAGAR_HOST, clusterId: "onsagar-cluster" },
-    { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: import.meta.env.VITE_FORTYTWO_HOST, clusterId: "fortytwo-cluster" },
-    { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: import.meta.env.VITE_NIRAJ_HOST, clusterId: "niraj-cluster" },
-    { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: import.meta.env.VITE_ADA_HOST, clusterId: "ada-cluster" },
-    { label: "PARAM Brahma Cluster : CPU + GPU", host: import.meta.env.VITE_PARAM_HOST, clusterId: "param-brahma-cluster" },
+    { label: "CMS Cluster (Dr. Seema & Dr. Sourabh) : CPU", host: import.meta.env.VITE_CMS_HOST, clusterId: "cms" },
+    { label: "Fermi Cluster (Dr. Prasenjith) : CPU", host: import.meta.env.VITE_FERMI_HOST, clusterId: "fermi" },
+    { label: "Athena Cluster (Dr. Mukul) : CPU", host: import.meta.env.VITE_ATHENA_HOST, clusterId: "athena" },
+    { label: "Charu Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_CHARU_HOST, clusterId: "charu" },
+    { label: "Megha Cluster (Dr. Neena) : CPU", host: import.meta.env.VITE_MEGHA_HOST, clusterId: "megha" },
+    { label: "Taurus Cluster (Dr. Arun) : CPU", host: import.meta.env.VITE_TAURUS_HOST, clusterId: "taurus" },
+    { label: "Lammer Cluster (Dr. Sreejith) : CPU", host: import.meta.env.VITE_LAMMER_HOST, clusterId: "lammer" },
+    { label: "Maths Cluster (Dr. Vivek) : CPU + GPU", host: import.meta.env.VITE_MATHS_HOST, clusterId: "maths" },
+    { label: "Bhoomi Cluster (Dr. Arjun) : CPU", host: import.meta.env.VITE_BHOOMI_HOST, clusterId: "bhoomi" },
+    { label: "Violin Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VIOLIN_HOST, clusterId: "violin" },
+    { label: "Veena Cluster (Dr. Srabanti) : CPU", host: import.meta.env.VITE_VEENA_HOST, clusterId: "veena" },
+    { label: "Onsagar Cluster (Dr. Arnab) : CPU", host: import.meta.env.VITE_ONSAGAR_HOST, clusterId: "onsagar" },
+    { label: "Fortytwo Cluster (Data Science Department) : CPU + GPU", host: import.meta.env.VITE_FORTYTWO_HOST, clusterId: "fortytwo" },
+    { label: "Niraj Cluster (Dr. Saikrishnan) : CPU + GPU", host: import.meta.env.VITE_NIRAJ_HOST, clusterId: "niraj" },
+    { label: "Ada Cluster (Dr. Madhu, Dr. Suhita and Dr. Collins) : CPU", host: import.meta.env.VITE_ADA_HOST, clusterId: "ada" },
+    { label: "PARAM Brahma Cluster : CPU + GPU", host: import.meta.env.VITE_PARAM_HOST, clusterId: "param-brahma" },
   ];
 
   const serverItems = [

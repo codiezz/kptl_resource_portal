@@ -9,6 +9,9 @@ export default function ClusterDocs() {
   const [endDate, setEndDate] = useState("");
   const [loadingType, setLoadingType] = useState(null);
   const [error, setError] = useState("");
+  const [accountList, setAccountList] = useState([]);
+const [showAccountMenu, setShowAccountMenu] = useState(false);
+const [loadingAccounts, setLoadingAccounts] = useState(false);
 
   const handleGenerateReport = async (reportType) => {
   if (!startDate || !endDate) {
@@ -38,6 +41,46 @@ export default function ClusterDocs() {
     setError("Failed to generate report. Please try again.");
   } finally {
     setLoadingType(null);
+  }
+};
+const handleAccountReportClick = async () => {
+  setLoadingAccounts(true);
+  try {
+    const res = await axios.post(
+    `http://localhost:5000/api/clusters/${clusterId}/accounts`,
+    { start: startDate, end: endDate },
+    { withCredentials: true }
+  );
+    setAccountList(res.data.accounts || []);
+    setShowAccountMenu(true);
+  } catch (err) {
+    console.error("Failed to fetch accounts", err);
+  } finally {
+    setLoadingAccounts(false);
+  }
+};
+
+const downloadAccountReport = async (accountName) => {
+  setShowAccountMenu(false);
+  try {
+    const res = await axios.post(
+      `http://localhost:5000/api/clusters/${clusterId}/report/account`,
+      { start: startDate, end: endDate, account: accountName },
+      { responseType: "blob", withCredentials: true }
+    );
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `account_report_${clusterId}_${accountName}_${startDate}_to_${endDate}.pdf`
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Failed to download account report", err);
   }
 };
 
@@ -85,7 +128,6 @@ export default function ClusterDocs() {
   {[
     { type: "cluster", label: "Cluster Report", enabled: true },
     { type: "gpu",     label: "GPU Report",     enabled: true },
-    { type: "account", label: "Account Report", enabled: false },
     { type: "user",    label: "User Report",    enabled: false },
   ].map(({ type, label, enabled }) => {
     const isLoading = loadingType === type;
@@ -106,6 +148,60 @@ export default function ClusterDocs() {
       </button>
     );
   })}
+  <div style={{ position: "relative" }}>
+  <button
+    onClick={handleAccountReportClick}
+    disabled={loadingAccounts}
+    style={{
+      ...styles.button,
+      width: "100%",
+    }}
+  >
+    {loadingAccounts ? "Loading..." : "Account Report"}
+  </button>
+
+  {showAccountMenu && (
+    <div
+      style={{
+        position: "absolute",
+        zIndex: 10,
+        top: "100%",
+        left: 0,
+        right: 0,
+        background: "#fff",
+        border: "1px solid #ddd",
+        borderRadius: "8px",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+        maxHeight: "240px",
+        overflowY: "auto",
+      }}
+    >
+      {accountList.length === 0 ? (
+        <div style={{ padding: "12px", fontSize: "14px" }}>
+          No accounts found
+        </div>
+      ) : (
+        accountList.map((acct) => (
+          <button
+            key={acct}
+            onClick={() => downloadAccountReport(acct)}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              padding: "10px 14px",
+              border: "none",
+              background: "white",
+              cursor: "pointer",
+            }}
+          >
+            {acct}
+          </button>
+        ))
+      )}
+    </div>
+  )}
+</div>
 </div>
 
         </div>
@@ -115,6 +211,8 @@ export default function ClusterDocs() {
     </section>
   );
 }
+
+
 
 function formatClusterName(name) {
   return name
