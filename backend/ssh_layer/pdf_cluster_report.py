@@ -1,4 +1,3 @@
-
 import io
 import os
 import tempfile
@@ -310,68 +309,133 @@ def _metrics_table(metrics: dict, label: str) -> Table:
 # Observation generator
 # ---------------------------------------------------------------------------
 
-def _generate_observations(cpu: dict, gpu: dict, accounts: dict) -> list:
-    """
-    Generate simple factual observations from parsed data.
-    Returns list of strings. Max 6 observations.
-    """
+def _generate_observations(cpu: dict, gpu: dict, accounts: dict, gpu_accounts: dict = {}) -> list:
     obs = []
-    cm = cpu.get('metrics', {})
-    gm = gpu.get('metrics', {})
+    cm    = cpu.get('metrics', {})
+    gm    = gpu.get('metrics', {})
+    accts = accounts.get('accounts', [])
+    total = accounts.get('cluster_total', {})
+    gpu_accts = gpu_accounts.get('accounts', [])
 
+    # --- CPU observations ---
     if cm:
-        if cm.get('allocated', 0) > 80:
-            obs.append(f"CPU resources are heavily utilized ({cm['allocated']:.1f}% allocated). Consider capacity expansion.")
-        elif cm.get('allocated', 0) < 30:
-            obs.append(f"CPU utilization is low ({cm['allocated']:.1f}% allocated). Significant idle capacity available.")
-        if cm.get('idle', 0) > 50:
-            obs.append(f"CPU idle time is high ({cm['idle']:.1f}%). Scheduling optimization may improve throughput.")
-        if cm.get('down', 0) > 10:
-            obs.append(f"Notable CPU downtime recorded ({cm['down']:.1f}%). Infrastructure review recommended.")
+        allocated = cm.get('allocated', 0)
+        idle      = cm.get('idle', 0)
+        down      = cm.get('down', 0)
+        planned   = cm.get('planned', 0)
+        reported  = cm.get('reported', 0)
 
-    if gm:
-        if gm.get('allocated', 0) > 80:
-            obs.append(f"GPU resources are heavily utilized ({gm['allocated']:.1f}% allocated). High demand period.")
-        elif gm.get('idle', 0) > 50:
-            obs.append(f"GPU utilization is relatively low ({gm['idle']:.1f}% idle). GPU capacity underutilized.")
-    elif gpu == {}:
+        if allocated > 80:
+            obs.append(f"CPU resources are heavily utilized ({allocated:.1f}% allocated). Consider capacity expansion.")
+        elif allocated > 50:
+            obs.append(f"CPU utilization is moderate ({allocated:.1f}% allocated).")
+        else:
+            obs.append(f"CPU utilization is low ({allocated:.1f}% allocated). Significant idle capacity available.")
+
+        if idle > 50:
+            obs.append(f"CPU idle time is high ({idle:.1f}%). Scheduling optimization or increased job submissions may improve throughput.")
+        elif idle > 30:
+            obs.append(f"CPU idle time is moderate ({idle:.1f}%). Some capacity remains available for additional workloads.")
+
+        if down > 10:
+            obs.append(f"Notable CPU downtime recorded ({down:.1f}%). Infrastructure review recommended.")
+        elif down > 0:
+            obs.append(f"Minor CPU downtime observed ({down:.1f}%). Systems are mostly healthy.")
+
+        if planned > 5:
+            obs.append(f"Planned downtime accounts for {planned:.1f}% of CPU time this period.")
+
+        if reported < 95:
+            obs.append(f"Only {reported:.1f}% of CPU time was reported — some nodes may have been offline or unaccounted for.")
+
+    # --- GPU summary observations (from gpu_accounts, not gpu metrics) ---
+    if gpu_accts:
+        total_gpu_hours = sum(a.get('gpu_hours', 0) or 0 for a in gpu_accts)
+        active_gpu_accts = [a for a in gpu_accts if (a.get('gpu_hours') or 0) > 0]
+
+        if total_gpu_hours:
+            obs.append(f"Total GPU consumption this period: {total_gpu_hours:,.1f} GPU hours across {len(active_gpu_accts)} account(s).")
+
+        # Top GPU account
+        top_gpu = gpu_accts[0]
+        if top_gpu.get('gpu_hours') and total_gpu_hours:
+            top_gpu_pct = (top_gpu['gpu_hours'] / total_gpu_hours) * 100
+            obs.append(
+                f"Account '{top_gpu['account']}' was the largest GPU consumer at "
+                f"{top_gpu['gpu_hours']:,.1f} hours ({top_gpu_pct:.1f}% of total GPU usage)."
+            )
+
+        # Top GPU user
+        all_gpu_users = [
+            (u, a['account'])
+            for a in gpu_accts
+            for u in a.get('users', [])
+            if (u.get('gpu_hours') or 0) > 0
+        ]
+        if all_gpu_users:
+            top_gpu_user, top_gpu_user_acct = max(all_gpu_users, key=lambda x: x[0].get('gpu_hours', 0))
+            obs.append(
+                f"Top GPU user '{top_gpu_user['login']}' (account: {top_gpu_user_acct}) consumed "
+                f"{top_gpu_user['gpu_hours']:,.1f} GPU hours."
+            )
+    elif gm:
+        # fallback: use raw gpu metrics if no account-level data
+        g_alloc = gm.get('allocated', 0)
+        g_idle  = gm.get('idle', 0)
+        g_down  = gm.get('down', 0)
+        if g_alloc > 80:
+            obs.append(f"GPU resources are heavily utilized ({g_alloc:.1f}% allocated). High demand period.")
+        elif g_alloc > 50:
+            obs.append(f"GPU utilization is moderate ({g_alloc:.1f}% allocated).")
+        elif g_idle > 50:
+            obs.append(f"GPU utilization is relatively low ({g_idle:.1f}% idle). GPU capacity is underutilized.")
+        if g_down > 10:
+            obs.append(f"Significant GPU downtime recorded ({g_down:.1f}%). Hardware inspection may be warranted.")
+    else:
         obs.append("GPU utilization data was unavailable for this reporting period.")
 
-    accts = accounts.get('accounts', [])
-    if accts and accounts.get('cluster_total'):
-        total_hours = accounts['cluster_total'].get('hours', 0)
-        top_acct    = accts[0]
+    # --- CPU Account / user observations ---
+    if accts:
+        total_hours = total.get('hours', 0) if total else 0
+
+        # Top account dominance
+        top_acct = accts[0]
         if total_hours and top_acct.get('hours'):
             top_pct = (top_acct['hours'] / total_hours) * 100
-            if top_pct > 40:
+            if top_pct > 50:
+                obs.append(f"Account '{top_acct['account']}' dominates cluster CPU usage at {top_pct:.1f}% of total hours.")
+            elif top_pct > 30:
+                obs.append(f"Account '{top_acct['account']}' is the largest CPU consumer at {top_pct:.1f}% of total hours.")
+
+        # Active accounts and users
+        active_accounts = [a for a in accts if (a.get('hours') or 0) > 0]
+        all_users = [u for a in accts for u in a.get('users', []) if (u.get('hours') or 0) > 0]
+
+        obs.append(f"{len(active_accounts)} account(s) and {len(all_users)} individual user(s) consumed CPU resources this period.")
+
+        # Top CPU user
+        if all_users:
+            top_user = max(all_users, key=lambda u: u.get('hours', 0))
+            if total_hours:
+                u_pct = (top_user['hours'] / total_hours) * 100
                 obs.append(
-                    f"Account '{top_acct['account']}' accounts for {top_pct:.1f}% of total "
-                    f"cluster usage — dominant consumer this period."
+                    f"Top CPU user '{top_user['login']}' consumed {top_user['hours']:,} hours "
+                    f"({u_pct:.1f}% of cluster total)."
                 )
 
-    return obs[:6]  # cap at 6
+        # Zero usage accounts
+        zero_accounts = [a for a in accts if (a.get('hours') or 0) == 0]
+        if zero_accounts:
+            names = ', '.join(a['account'] for a in zero_accounts[:3])
+            more  = f" and {len(zero_accounts) - 3} more" if len(zero_accounts) > 3 else ""
+            obs.append(f"Account(s) {names}{more} recorded zero CPU usage this period.")
 
-
+    return obs[:10]  # cap at 10
 # ---------------------------------------------------------------------------
 # Main PDF builder
 # ---------------------------------------------------------------------------
 
 def generate_enhanced_cluster_report(data: dict) -> bytes:
-    """
-    Generate enhanced cluster utilization PDF.
-
-    Args:
-        data = {
-            "cluster":  "fortytwo",
-            "period":   {"start": "...", "end": "..."},
-            "cpu":      dict from parse_tres_utilization, or {}
-            "gpu":      dict from parse_tres_utilization, or {}
-            "accounts": dict from parse_account_utilization, or {}
-        }
-
-    Returns:
-        PDF as bytes.
-    """
     from ssh_layer.slurm_report_parser import get_all_users_sorted
 
     cluster_name = data.get('cluster', 'Unknown')
@@ -379,6 +443,7 @@ def generate_enhanced_cluster_report(data: dict) -> bytes:
     cpu          = data.get('cpu', {})
     gpu          = data.get('gpu', {})
     accounts     = data.get('accounts', {})
+    gpu_accounts = data.get('gpu_accounts', {})   # FIX: extract here, pass down
 
     start_str    = (period.get('start') or '')[:10] or 'N/A'
     end_str      = (period.get('end')   or '')[:10] or 'N/A'
@@ -391,7 +456,6 @@ def generate_enhanced_cluster_report(data: dict) -> bytes:
 
     s = _styles()
 
-    # Generate chart images to temp files
     tmp = {}
     try:
         for key in ['cpu_pie', 'cpu_bar', 'gpu_pie', 'gpu_bar', 'acct_bar', 'users_bar']:
@@ -418,10 +482,10 @@ def generate_enhanced_cluster_report(data: dict) -> bytes:
             acct_list, all_users,
             acct_chart_ok, user_chart_ok,
             tmp, accounts,
-            cpu, gpu
+            cpu, gpu, gpu_accounts    # FIX: pass gpu_accounts, not data.get(...)
         )
 
-    finally:
+    finally:                          # FIX: removed bad except block with jsonify()
         for path in tmp.values():
             try:
                 os.unlink(path)
@@ -431,14 +495,10 @@ def generate_enhanced_cluster_report(data: dict) -> bytes:
     return pdf_bytes
 
 
-def _build_pdf(
-    cluster_name, start_str, end_str, generated_at, s,
-    cpu_metrics, gpu_metrics, gpu_charts_ok,
-    acct_list, all_users,
-    acct_chart_ok, user_chart_ok,
-    tmp, accounts,
-    cpu, gpu
-) -> bytes:
+def _build_pdf(cluster_name, start_str, end_str, generated_at, s,
+               cpu_metrics, gpu_metrics, gpu_charts_ok,
+               acct_list, all_users, acct_chart_ok, user_chart_ok,
+               tmp, accounts, cpu, gpu, gpu_accounts) -> bytes:
 
     buf  = io.BytesIO()
     doc  = BaseDocTemplate(
@@ -459,7 +519,7 @@ def _build_pdf(
     doc.addPageTemplates([template])
     story = []
 
-    content_w = W - doc.leftMargin - doc.rightMargin  # usable width
+    content_w = W - doc.leftMargin - doc.rightMargin
 
     # ----------------------------------------------------------------
     # PAGE 1 — COVER
@@ -510,7 +570,6 @@ def _build_pdf(
     # ----------------------------------------------------------------
     story += _section_header("Executive Summary", s)
 
-    # Combined CPU vs GPU table
     exec_rows = [
         ["Metric", "CPU", "GPU"],
         ["Allocated %",
@@ -550,7 +609,6 @@ def _build_pdf(
     story.append(et)
     story.append(Spacer(1, 0.5 * cm))
 
-    # Quick account stats if available
     if accounts.get('cluster_total') and acct_list:
         total_h = accounts['cluster_total'].get('hours', 0)
         n_accts = len(acct_list)
@@ -645,7 +703,6 @@ def _build_pdf(
     story += _section_header("Resource Consumption by Account", s)
 
     if acct_list:
-        # Table — top 10 accounts
         top_accts = acct_list[:10]
         acct_rows = [["Account", "CPU Hours", "Usage %", "Active Users"]]
         for a in top_accts:
@@ -737,7 +794,7 @@ def _build_pdf(
     ))
     story.append(Spacer(1, 0.4 * cm))
 
-    obs = _generate_observations(cpu, gpu, accounts)
+    obs = _generate_observations(cpu, gpu, accounts, gpu_accounts)  # FIX: use local var
     if obs:
         for i, o in enumerate(obs, 1):
             story.append(Paragraph(f"<b>{i}.</b>  {o}", s['obs_item']))
@@ -746,7 +803,6 @@ def _build_pdf(
 
     doc.build(story)
     return buf.getvalue()
-
 
 # ---------------------------------------------------------------------------
 # Standalone test — uses REAL SSH data from fortytwo
