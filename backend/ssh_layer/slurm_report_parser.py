@@ -561,7 +561,69 @@ def merge_gpu_account_data(hours_data: dict, pct_data: dict) -> dict:
         'accounts': merged_accounts
     }
 
+# ---------------------------------------------------------------------------
+# parse_user_cpu_single
+# Parses output of:
+#   sreport cluster userutilizationbyaccount -t hourper account=X user=Y
+#
+# Column order (different from AccountUtilizationByUser):
+#   Cluster | Login | Proper Name | Account | Used | Energy
+#
+# Returns:
+#   {"login": "arnab", "account": "iiser", "hours": 2476543, "percentage": 5.17}
+#   or {} on failure
+# ---------------------------------------------------------------------------
 
+def parse_user_cpu_single(raw: str) -> dict:
+    if not raw or not raw.strip():
+        return {}
+    try:
+        clean    = _clean(raw)
+        lines    = clean.splitlines()
+        in_data  = False
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if re.match(r'^-{3,}', stripped):
+                in_data = True
+                continue
+            if not in_data:
+                continue
+
+            # Used token: 2476543(5.17%)  followed by Energy token
+            # Energy may be  0(0.00%)  or plain  0
+            m = re.search(r'(\d[\d,]*)\(([\d.]+)%\)', stripped)
+            if not m:
+                continue
+
+            hours      = int(m.group(1).replace(',', ''))
+            percentage = float(m.group(2))
+
+            # Identity is everything before the Used token
+            identity = stripped[:m.start()].strip().split()
+
+            # Expected: [Cluster, Login, (optional ProperName tokens...), Account]
+            # Account is the last identity token, Login is the second
+            if len(identity) < 3:
+                continue
+
+            login   = identity[1]
+            account = identity[-1]
+
+            return {
+                "login":      login,
+                "account":    account,
+                "hours":      hours,
+                "percentage": percentage,
+            }
+
+        return {}
+
+    except Exception as e:
+        logger.error(f"parse_user_cpu_single failed: {e}")
+        return {}
 # ---------------------------------------------------------------------------
 # Self-tests — run directly to verify
 # ---------------------------------------------------------------------------

@@ -1,0 +1,3 @@
+{
+  "error": "User 'doesnotexist' not found in cluster data"
+}

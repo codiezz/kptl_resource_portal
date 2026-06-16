@@ -9,89 +9,147 @@ export default function ClusterDocs() {
   const [endDate, setEndDate] = useState("");
   const [loadingType, setLoadingType] = useState(null);
   const [error, setError] = useState("");
-  const [accountList, setAccountList] = useState([]);
-const [showAccountMenu, setShowAccountMenu] = useState(false);
-const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  // === Account/User tree state ===
+  const [showAccountTree, setShowAccountTree] = useState(false);
+  const [accountTree, setAccountTree] = useState([]); // [{ name, expanded, users: [] }]
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [downloadingKey, setDownloadingKey] = useState(null); // "account:acct1" or "user:acct1:user1"
 
   const handleGenerateReport = async (reportType) => {
-  if (!startDate || !endDate) {
-    setError("Please select both start and end dates.");
-    return;
-  }
-  setError("");
-  setLoadingType(reportType);
-  try {
-    const response = await axios.post(
-      `http://localhost:5000/api/clusters/${clusterId}/report/${reportType}`,
-      { start: startDate, end: endDate },
-      { withCredentials: true, responseType: "blob" }
-    );
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `${reportType}_report_${clusterId}_${startDate}_to_${endDate}.pdf`
-    );
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    setError("Failed to generate report. Please try again.");
-  } finally {
-    setLoadingType(null);
-  }
-};
-const handleAccountReportClick = async () => {
-  setLoadingAccounts(true);
-  try {
-    const res = await axios.post(
-    `http://localhost:5000/api/clusters/${clusterId}/accounts`,
-    { start: startDate, end: endDate },
-    { withCredentials: true }
-  );
-    setAccountList(res.data.accounts || []);
-    setShowAccountMenu(true);
-  } catch (err) {
-    console.error("Failed to fetch accounts", err);
-  } finally {
-    setLoadingAccounts(false);
-  }
-};
+    if (!startDate || !endDate) {
+      setError("Please select both start and end dates.");
+      return;
+    }
+    setError("");
+    setLoadingType(reportType);
+    try {
+      const response = await axios.post(
+        `http://localhost:5000/api/clusters/${clusterId}/report/${reportType}`,
+        { start: startDate, end: endDate },
+        { withCredentials: true, responseType: "blob" }
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `${reportType}_report_${clusterId}_${startDate}_to_${endDate}.pdf`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError("Failed to generate report. Please try again.");
+    } finally {
+      setLoadingType(null);
+    }
+  };
 
-const downloadAccountReport = async (accountName) => {
-  setShowAccountMenu(false);
-  try {
-    const res = await axios.post(
-      `http://localhost:5000/api/clusters/${clusterId}/report/account`,
-      { start: startDate, end: endDate, account: accountName },
-      { responseType: "blob", withCredentials: true }
+  // === Fetch accounts + their users in ONE call, toggle tree open/closed ===
+  const handleAccountReportClick = async () => {
+    // If already loaded, just toggle visibility instead of refetching
+    if (accountTree.length > 0) {
+      setShowAccountTree((prev) => !prev);
+      return;
+    }
+
+    setLoadingAccounts(true);
+    try {
+      const res = await axios.post(
+        `http://localhost:5000/api/clusters/${clusterId}/report/accounts`,
+        { start: startDate, end: endDate },
+        { withCredentials: true }
+      );
+      const accounts = res.data.accounts || []; // [{ name, users: [] }]
+      setAccountTree(
+        accounts.map((a) => ({
+          name: a.name,
+          users: a.users || [],
+          expanded: false,
+        }))
+      );
+      setShowAccountTree(true);
+    } catch (err) {
+      console.error("Failed to fetch accounts", err);
+      setError("Failed to load accounts.");
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
+
+  // === Toggle expand/collapse for one account (no fetch — users already in memory) ===
+  const toggleAccountExpand = (accountName) => {
+    setAccountTree((prev) =>
+      prev.map((a) =>
+        a.name === accountName ? { ...a, expanded: !a.expanded } : a
+      )
     );
-    const url = window.URL.createObjectURL(new Blob([res.data]));
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute(
-      "download",
-      `account_report_${clusterId}_${accountName}_${startDate}_to_${endDate}.pdf`
-    );
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error("Failed to download account report", err);
-  }
-};
+  };
+
+  // === Download an account-level PDF ===
+  const downloadAccountReport = async (accountName) => {
+    const key = `account:${accountName}`;
+    setDownloadingKey(key);
+    try {
+      const res = await axios.post(
+        `http://localhost:5000/api/clusters/${clusterId}/report/account`,
+        { start: startDate, end: endDate, account: accountName },
+        { responseType: "blob", withCredentials: true }
+      );
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `account_report_${clusterId}_${accountName}_${startDate}_to_${endDate}.pdf`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download account report", err);
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
+
+  // === Download a user-level PDF ===
+  const downloadUserReport = async (accountName, userLogin) => {
+    const key = `user:${accountName}:${userLogin}`;
+    setDownloadingKey(key);
+    try {
+      const res = await axios.post(
+        `http://localhost:5000/api/clusters/${clusterId}/report/user`,
+        { start: startDate, end: endDate, account: accountName, user: userLogin },
+        { responseType: "blob", withCredentials: true }
+      );
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `user_report_${clusterId}_${accountName}_${userLogin}_${startDate}_to_${endDate}.pdf`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download user report", err);
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
 
   return (
     <section style={styles.page}>
       <div style={styles.container}>
         <span style={styles.badge}>Cluster Analytics</span>
 
-        <h1 style={styles.heading}>
-          {formatClusterName(clusterId)}
-        </h1>
+        <h1 style={styles.heading}>{formatClusterName(clusterId)}</h1>
 
         <p style={styles.subheading}>
           Select a date range to view cluster statistics.
@@ -125,94 +183,152 @@ const downloadAccountReport = async (accountName) => {
           )}
 
           <div style={styles.buttonGrid}>
-  {[
-    { type: "cluster", label: "Cluster Report", enabled: true },
-    { type: "gpu",     label: "GPU Report",     enabled: true },
-    { type: "user",    label: "User Report",    enabled: false },
-  ].map(({ type, label, enabled }) => {
-    const isLoading = loadingType === type;
-    const isDisabled = !enabled || loadingType !== null;
-    return (
-      <button
-        key={type}
-        style={{
-          ...styles.button,
-          opacity: !enabled ? 0.4 : isDisabled ? 0.7 : 1,
-          cursor: isDisabled ? "not-allowed" : "pointer",
-        }}
-        onClick={() => enabled && handleGenerateReport(type)}
-        disabled={isDisabled}
-        title={!enabled ? "Not yet available" : undefined}
-      >
-        {isLoading ? "Generating..." : label}
-      </button>
-    );
-  })}
-  <div style={{ position: "relative" }}>
-  <button
-    onClick={handleAccountReportClick}
-    disabled={loadingAccounts}
-    style={{
-      ...styles.button,
-      width: "100%",
-    }}
-  >
-    {loadingAccounts ? "Loading..." : "Account Report"}
-  </button>
+            {[
+              { type: "cluster", label: "Cluster Report", enabled: true },
+              { type: "gpu", label: "GPU Report", enabled: true },
+            ].map(({ type, label, enabled }) => {
+              const isLoading = loadingType === type;
+              const isDisabled = !enabled || loadingType !== null;
+              return (
+                <button
+                  key={type}
+                  style={{
+                    ...styles.button,
+                    opacity: !enabled ? 0.4 : isDisabled ? 0.7 : 1,
+                    cursor: isDisabled ? "not-allowed" : "pointer",
+                  }}
+                  onClick={() => enabled && handleGenerateReport(type)}
+                  disabled={isDisabled}
+                  title={!enabled ? "Not yet available" : undefined}
+                >
+                  {isLoading ? "Generating..." : label}
+                </button>
+              );
+            })}
 
-  {showAccountMenu && (
-    <div
-      style={{
-        position: "absolute",
-        zIndex: 10,
-        top: "100%",
-        left: 0,
-        right: 0,
-        background: "#fff",
-        border: "1px solid #ddd",
-        borderRadius: "8px",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-        maxHeight: "240px",
-        overflowY: "auto",
-      }}
-    >
-      {accountList.length === 0 ? (
-        <div style={{ padding: "12px", fontSize: "14px" }}>
-          No accounts found
+            {/* === ACCOUNT REPORT TREE (replaces old User Report + Account Report buttons) === */}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={handleAccountReportClick}
+                disabled={loadingAccounts}
+                style={{ ...styles.button, width: "100%" }}
+              >
+                {loadingAccounts ? "Loading..." : "Account Report"}
+              </button>
+
+              {showAccountTree && (
+                <div
+                  style={{
+                    marginTop: "8px",
+                    background: "#fff",
+                    border: "1px solid #ddd",
+                    borderRadius: "8px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    maxHeight: "320px",
+                    overflowY: "auto",
+                  }}
+                >
+                  {accountTree.length === 0 ? (
+                    <div style={{ padding: "12px", fontSize: "14px", color: "#888" }}>
+                      No accounts found
+                    </div>
+                  ) : (
+                    accountTree.map((acct) => (
+                      <div key={acct.name} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        {/* Account row */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "10px 12px",
+                          }}
+                        >
+                          <span
+                            onClick={() => toggleAccountExpand(acct.name)}
+                            style={{
+                              cursor: "pointer",
+                              width: "20px",
+                              display: "inline-block",
+                              fontSize: "12px",
+                              color: "#666",
+                              userSelect: "none",
+                            }}
+                          >
+                            {acct.expanded ? "▼" : "▶"}
+                          </span>
+
+                          <span
+                            onClick={() => downloadAccountReport(acct.name)}
+                            style={{
+                              flex: 1,
+                              cursor: "pointer",
+                              fontSize: "14px",
+                              fontWeight: 500,
+                              color: "#1a1a1a",
+                            }}
+                          >
+                            {acct.name}
+                          </span>
+
+                          {downloadingKey === `account:${acct.name}` && (
+                            <span style={{ fontSize: "12px", color: "#c1121f" }}>
+                              Generating...
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Nested users */}
+                        {acct.expanded && (
+                          <div style={{ paddingLeft: "28px", paddingBottom: "6px" }}>
+                            {acct.users.length === 0 ? (
+                              <div style={{ fontSize: "13px", color: "#888", padding: "6px 0" }}>
+                                No users found
+                              </div>
+                            ) : (
+                              acct.users.map((user) => (
+                                <div
+                                  key={user}
+                                  onClick={() => downloadUserReport(acct.name, user)}
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    padding: "6px 8px",
+                                    fontSize: "13px",
+                                    color: "#444",
+                                    cursor: "pointer",
+                                    borderRadius: "6px",
+                                  }}
+                                  onMouseEnter={(e) =>
+                                    (e.currentTarget.style.background = "#f7f7f7")
+                                  }
+                                  onMouseLeave={(e) =>
+                                    (e.currentTarget.style.background = "transparent")
+                                  }
+                                >
+                                  <span>{user}</span>
+                                  {downloadingKey === `user:${acct.name}:${user}` && (
+                                    <span style={{ fontSize: "11px", color: "#c1121f" }}>
+                                      Generating...
+                                    </span>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      ) : (
-        accountList.map((acct) => (
-          <button
-            key={acct}
-            onClick={() => downloadAccountReport(acct)}
-            style={{
-              display: "block",
-              width: "100%",
-              textAlign: "left",
-              padding: "10px 14px",
-              border: "none",
-              background: "white",
-              cursor: "pointer",
-            }}
-          >
-            {acct}
-          </button>
-        ))
-      )}
-    </div>
-  )}
-</div>
-</div>
-
-        </div>
-
-        
       </div>
     </section>
   );
 }
-
-
 
 function formatClusterName(name) {
   return name
@@ -226,12 +342,10 @@ const styles = {
     background: "linear-gradient(to bottom,#fafafa,#f6f7fb)",
     padding: "40px 30px 90px",
   },
-
   container: {
     maxWidth: "900px",
     margin: "0 auto",
   },
-
   badge: {
     background: "#ffe5e5",
     color: "#c1121f",
@@ -240,7 +354,6 @@ const styles = {
     fontWeight: "600",
     fontSize: "14px",
   },
-
   heading: {
     fontSize: "34px",
     fontWeight: "500",
@@ -250,12 +363,10 @@ const styles = {
     letterSpacing: "-0.5px",
     maxWidth: "800px",
   },
-
   subheading: {
     color: "#666",
     marginBottom: "50px",
   },
-
   filterCard: {
     background: "#fff",
     borderRadius: "24px",
@@ -266,19 +377,16 @@ const styles = {
     flexWrap: "wrap",
     alignItems: "end",
   },
-
   inputGroup: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
   },
-
   input: {
     border: "1px solid #ddd",
     borderRadius: "12px",
     padding: "12px",
   },
-
   button: {
     background: "#c1121f",
     color: "#fff",
@@ -286,7 +394,6 @@ const styles = {
     borderRadius: "12px",
     padding: "14px 24px",
   },
-
   stats: {
     marginTop: "40px",
     background: "#fff",
@@ -294,14 +401,12 @@ const styles = {
     borderRadius: "24px",
     lineHeight: "2",
   },
-
   chartGrid: {
     display: "flex",
     gap: "28px",
     flexWrap: "wrap",
     marginTop: "50px",
   },
-
   chartCard: {
     background: "#fff",
     borderRadius: "24px",
@@ -312,16 +417,15 @@ const styles = {
     height: "230px",
     flexShrink: 0,
   },
-
   chartTitle: {
     marginBottom: "14px",
     fontSize: "16px",
     fontWeight: "600",
   },
   buttonGrid: {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "12px",
-  width: "100%",
-},
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "12px",
+    width: "100%",
+  },
 };
