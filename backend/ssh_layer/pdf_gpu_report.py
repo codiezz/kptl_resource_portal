@@ -52,8 +52,13 @@ MID_GREY   = colors.HexColor("#7f8c8d")
 DARK_GREY  = colors.HexColor("#2c3e50")
 WHITE      = colors.white
 
-# GPU uses green palette to distinguish from CPU blue
-CHART_COLORS_GPU = ["#1a6b4a", "#5db89a", "#c0392b", "#7f8c8d", "#bdc3c7"]
+# IISER Pune logo red — sampled directly from official logo asset (#d80100)
+IISER_RED  = colors.HexColor("#d80100")
+IISER_RED_HEX = "#d80100"  # plain hex string for matplotlib (ReportLab uses IISER_RED above)
+COVER_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "iiser_logo.png")  # relative path to logo image for cover page
+# Navy-dominant, non-monochromatic palette for GPU charts.
+# Red reserved as a sparing accent (used only for the "Down" / attention metric).
+CHART_COLORS_GPU = ["#1a3a5c", "#2c5f8a", "#5a8fb8", "#d80100", "#7f8c8d"]
 
 W, H = A4
 
@@ -76,23 +81,69 @@ def _make_gpu_pie(metrics: dict, path: str):
     sizes  = list(data.values())
     clrs   = CHART_COLORS_GPU[:len(labels)]
 
-    fig, ax = plt.subplots(figsize=(5.5, 4))
-    wedges, texts, autotexts = ax.pie(
-        sizes, labels=labels, colors=clrs,
-        autopct='%1.1f%%', startangle=140,
-        pctdistance=0.82,
-        textprops={'fontsize': 9, 'color': '#2c3e50'},
-        wedgeprops={'edgecolor': 'white', 'linewidth': 1.5}
-    )
-    for at in autotexts:
-        at.set_fontsize(8)
-        at.set_fontweight('bold')
-    ax.set_title("GPU Utilization Composition", fontsize=11,
-                 fontweight='bold', color='#1a3a5c', pad=12)
-    plt.tight_layout()
-    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close()
+    total = sum(sizes) or 1
 
+    fig, ax = plt.subplots(figsize=(7,7), dpi=250)
+
+    wedges, _ = ax.pie(
+    sizes,
+    colors=clrs,
+    startangle=90,
+    radius=0.85,
+    wedgeprops={
+        'width': 0.35,
+        'edgecolor': 'white',
+        'linewidth': 2
+    }
+)
+    ax.set_aspect('equal')
+
+    import numpy as np
+
+    for wedge, label, value in zip(wedges, labels, sizes):
+
+        pct = value / total * 100
+
+        if 0 < pct < 5:
+
+            angle = (wedge.theta2 + wedge.theta1) / 2
+
+            x = np.cos(np.deg2rad(angle))
+            y = np.sin(np.deg2rad(angle))
+
+            ax.annotate(
+                f"{label} ({pct:.1f}%)",
+                xy=(x * 0.85, y * 0.85),
+                xytext=(x * 1.05, y * 1.05),
+                arrowprops=dict(
+                    arrowstyle='-',
+                    color='#555555',
+                    lw=1
+                ),
+                fontsize=8,
+                color='#333333'
+            )
+
+    # Donut style with an external legend only — no text or percentage
+    # labels are drawn on the wedges themselves, so collisions between
+    # adjacent small slices are structurally impossible regardless of
+    # how thin any individual slice is.
+    legend_labels = [
+    f"{label} — {value:,.1f} hrs"
+    for label, value in zip(labels, sizes)
+]
+    ax.legend(
+        wedges, legend_labels,
+        loc='center left', bbox_to_anchor=(1.0, 0.5),
+        frameon=False, fontsize=9.5, labelspacing=1.1,
+        handlelength=1.4, handleheight=1.4
+    )
+
+    ax.set_title("GPU Utilization Composition", fontsize=11,
+                 fontweight='bold', color='#1a3a5c', pad=14)
+    plt.tight_layout()
+    plt.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
 
 def _make_gpu_bar(metrics: dict, path: str):
     labels = ["Allocated", "Idle", "Down", "Planned", "Planned\nDown"]
@@ -105,7 +156,7 @@ def _make_gpu_bar(metrics: dict, path: str):
     ]
     clrs = CHART_COLORS_GPU[:len(labels)]
 
-    fig, ax = plt.subplots(figsize=(6.5, 4))
+    fig, ax = plt.subplots(figsize=(10,6), dpi=300)
     bars = ax.bar(labels, values, color=clrs, width=0.5,
                   edgecolor='white', linewidth=1.2)
 
@@ -130,7 +181,7 @@ def _make_gpu_bar(metrics: dict, path: str):
     ax.yaxis.grid(True, linestyle='--', alpha=0.4, color='#aaaaaa')
     ax.set_axisbelow(True)
     plt.tight_layout()
-    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
 
 
@@ -142,34 +193,139 @@ def _make_gpu_accounts_hbar(accounts: list, path: str, top_n: int = 10) -> bool:
 
     labels = [a['account'] for a in reversed(top)]
     values = [a['gpu_hours'] for a in reversed(top)]
-    clrs   = ["#1a6b4a", "#2e8b57", "#3aad6e", "#5db89a", "#80c9ac",
-              "#a0d8be", "#bde5cf", "#d5efdf", "#e8f7ef", "#f4fbf7"][:len(labels)]
+    # Top 3 by GPU hours are highlighted red ("heavy usage"); rest navy.
+    # `top` is already sorted by gpu_hours descending before reversal for display.
+    heavy_cutoff = min(3, len(top))
+    clrs = []
 
-    fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
-    bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.6, edgecolor='white')
+    for idx, acct in enumerate(reversed(top)):
+        rank = len(top) - idx
+
+        if rank == 1:
+            clrs.append(IISER_RED_HEX)      # highest consumer
+        elif rank == 2:
+            clrs.append("#b53a3a")          # muted red
+        else:
+            clrs.append("#1a3a5c")          # institutional navy
+
+    fig, ax = plt.subplots(
+    figsize=(12, max(5.5, len(top) * 0.7))
+)
+    bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.6, edgecolor='#ffffff',
+linewidth=0.7)
 
     max_val = max(values) if values else 1
     for bar, val in zip(bars, values):
         ax.text(
             bar.get_width() + max_val * 0.01,
             bar.get_y() + bar.get_height() / 2,
-            f'{val:,.1f}', va='center', ha='left', fontsize=8, color='#2c3e50'
+            f'{val:,.1f} hrs', va='center', ha='left', fontsize=8, color='#2c3e50'
         )
 
     ax.set_xlabel("GPU Hours", fontsize=9, color='#2c3e50')
-    ax.set_title(f"Top {len(top)} Accounts by GPU Hours",
-                 fontsize=10, fontweight='bold', color='#1a3a5c')
     ax.set_xlim(0, max_val * 1.18)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color('#cccccc')
     ax.spines['bottom'].set_color('#cccccc')
     ax.tick_params(colors='#555555', labelsize=8.5)
-    ax.xaxis.grid(True, linestyle='--', alpha=0.4, color='#aaaaaa')
+    ax.xaxis.grid(
+    True,
+    linestyle=':',
+    linewidth=0.8,
+    alpha=0.35,
+    color='#9aa5b1'
+)
     ax.set_axisbelow(True)
     plt.tight_layout()
-    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
+    return True
+
+def _make_gpu_accounts_donut(accounts: list, path: str, top_n: int = 10) -> bool:
+
+    top = [a for a in accounts[:top_n] if (a.get('gpu_hours') or 0) > 0]
+
+    if not top:
+        return False
+
+    labels = [a['account'] for a in top]
+    values = [a['gpu_hours'] for a in top]
+
+    colors = CHART_COLORS_GPU[:len(labels)]
+
+    fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+
+    wedges, _ = ax.pie(
+    values,
+    colors=colors,
+    startangle=90,
+    radius=1.0,
+    wedgeprops={
+        'width': 0.35,
+        'edgecolor': 'white',
+        'linewidth': 2
+    }
+)
+    import numpy as np
+
+    total = sum(values)
+
+    for wedge, label, value in zip(wedges, labels, values):
+
+        pct = value / total * 100
+
+        if pct < 5 and value > 0:
+
+            angle = (wedge.theta1 + wedge.theta2) / 2
+
+            x = np.cos(np.deg2rad(angle))
+            y = np.sin(np.deg2rad(angle))
+
+            ax.annotate(
+                f"{label}\n({pct:.2f}%)",
+                xy=(x * 0.85, y * 0.85),
+                xytext=(x * 1.05, y * 1.05),
+                arrowprops=dict(
+                    arrowstyle='-',
+                    lw=1,
+                    color='#555555'
+                ),
+                fontsize=8,
+                color='#333333'
+            )
+
+    ax.set_aspect('equal')
+    legend_labels = [
+    f"{label} — {value:,.1f} hrs"
+    for label, value in zip(labels, values)
+]
+
+    ax.legend(
+    wedges,
+    legend_labels,
+    loc='center left',
+    bbox_to_anchor=(1.02, 0.5),
+    frameon=False,
+    fontsize=8.5
+)
+
+    ax.set_title(
+        "GPU Hours Distribution by Account",
+        fontsize=11,
+        fontweight='bold',
+        color='#1a3a5c'
+    )
+
+    plt.savefig(
+        path,
+        dpi=300,
+        bbox_inches='tight',
+        facecolor='white'
+    )
+
+    plt.close()
+
     return True
 
 
@@ -179,11 +335,14 @@ def _make_gpu_users_hbar(users: list, path: str, top_n: int = 12) -> bool:
     if not top:
         return False
 
+
     labels = [u['login'] for u in reversed(top)]
     values = [u['gpu_hours'] for u in reversed(top)]
-    clrs   = ["#2c5f8a", "#3a7abf", "#4e95d6", "#6aafe0", "#85c0e8",
-              "#a0ccee", "#b8d9f0", "#cde4f5", "#deeefa", "#eef6fc",
-              "#1a6b4a", "#5db89a"][:len(labels)]
+    # Top 3 by GPU hours are highlighted red ("heavy usage"); rest navy.
+    heavy_cutoff = min(3, len(top))
+    heavy_logins = {u['login'] for u in top[:heavy_cutoff]}
+    clrs = [IISER_RED_HEX if u['login'] in heavy_logins else "#1a3a5c"
+            for u in reversed(top)]
 
     fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
     bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.6, edgecolor='white')
@@ -212,7 +371,83 @@ def _make_gpu_users_hbar(users: list, path: str, top_n: int = 12) -> bool:
     plt.close()
     return True
 
+def _make_gpu_users_donut(users: list, path: str, top_n: int = 12) -> bool:
 
+    top = [u for u in users[:top_n] if (u.get('gpu_hours') or 0) > 0]
+
+    if not top:
+        return False
+
+    labels = [u['login'] for u in top]
+    values = [u['gpu_hours'] for u in top]
+
+    fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+
+    wedges, _ = ax.pie(
+        values,
+        startangle=90,
+        radius=1.0,
+        colors=CHART_COLORS_GPU[:len(labels)],
+        wedgeprops={
+            'width': 0.38,
+            'edgecolor': 'white',
+            'linewidth': 2
+        }
+    )
+
+    total = sum(values)
+
+    import numpy as np
+
+    for wedge, label, value in zip(wedges, labels, values):
+
+        pct = value / total * 100
+
+        if 0 < pct < 5:
+
+            angle = (wedge.theta1 + wedge.theta2) / 2
+
+            x = np.cos(np.deg2rad(angle))
+            y = np.sin(np.deg2rad(angle))
+
+            ax.annotate(
+                f"{label}\n({pct:.1f}%)",
+                xy=(x * 0.85, y * 0.85),
+                xytext=(x * 1.15, y * 1.15),
+                arrowprops=dict(
+                    arrowstyle='-',
+                    lw=1,
+                    color='#555555'
+                ),
+                fontsize=8
+            )
+
+    legend_labels = [
+        f"{label} — {value:,.1f} hrs"
+        for label, value in zip(labels, values)
+    ]
+
+    ax.legend(
+        wedges,
+        legend_labels,
+        loc='center left',
+        bbox_to_anchor=(1.02, 0.5),
+        frameon=False,
+        fontsize=8.5
+    )
+
+    ax.set_aspect('equal')
+
+    ax.set_title(
+        "GPU Hours Distribution by User",
+        fontsize=11,
+        fontweight='bold'
+    )
+
+    plt.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+
+    return True
 
 
 def _header_footer(cluster_name: str, generated_at: str):
@@ -229,13 +464,16 @@ def _header_footer(cluster_name: str, generated_at: str):
                                f"Cluster: {cluster_name.upper()}")
 
         canvas.setFillColor(LIGHT_GREY)
-        canvas.rect(0, 0, W, 1.0 * cm, fill=1, stroke=0)
+        canvas.rect(0, 0.28 * cm, W, 0.72 * cm, fill=1, stroke=0)
         canvas.setFillColor(MID_GREY)
         canvas.setFont("Helvetica", 7.5)
-        canvas.drawString(1.5 * cm, 0.35 * cm,
-                          "Generated automatically by IISER Pune HPC Portal")
-        canvas.drawRightString(W - 1.5 * cm, 0.35 * cm,
-                               f"Page {doc.page}   |   {generated_at}")
+        canvas.drawString(1.5 * cm, 0.5 * cm,
+                          "IISER Pune HPC Portal — Automated Report Generation System")
+        canvas.drawRightString(W - 1.5 * cm, 0.5 * cm,
+                               f"Page {doc.page}")
+
+        canvas.setFillColor(DARK_BLUE)
+        canvas.rect(0, 0, W, 0.28 * cm, fill=1, stroke=0)
 
         canvas.restoreState()
     return on_page
@@ -300,13 +538,24 @@ def generate_gpu_report(data: dict) -> bytes:
     # Styles
     s = {
         'title': ParagraphStyle(
-            'Title', fontSize=22, fontName='Helvetica-Bold',
-            textColor=DARK_BLUE, alignment=TA_CENTER, spaceAfter=6
-        ),
+    'Title',
+    fontSize=22,
+    leading=30,
+    fontName='Helvetica-Bold',
+    textColor=DARK_BLUE,
+    alignment=TA_CENTER,
+    spaceAfter=10
+),
         'subtitle': ParagraphStyle(
-            'Subtitle', fontSize=13, fontName='Helvetica',
-            textColor=MID_BLUE, alignment=TA_CENTER, spaceAfter=4
-        ),
+    'Subtitle',
+    fontSize=13,
+    leading=18,
+    fontName='Helvetica',
+    textColor=MID_BLUE,
+    alignment=TA_CENTER,
+    spaceBefore=2,
+    spaceAfter=8
+),
         'section': ParagraphStyle(
             'Section', fontSize=13, fontName='Helvetica-Bold',
             textColor=DARK_BLUE, spaceBefore=14, spaceAfter=8
@@ -323,12 +572,21 @@ def generate_gpu_report(data: dict) -> bytes:
             'ObsItem', fontSize=10, fontName='Helvetica',
             textColor=DARK_GREY, spaceAfter=6, leftIndent=12
         ),
+        'figure_caption': ParagraphStyle(
+            'FigureCaption',
+            fontSize=8.5,
+            fontName='Helvetica-Oblique',
+            textColor=DARK_GREY,
+            alignment=TA_CENTER,
+            spaceAfter=6
+),
     }
 
     def section_header(title):
         return [
             Paragraph(title, s['section']),
-            HRFlowable(width="100%", thickness=1, color=LIGHT_BLUE, spaceAfter=10)
+            HRFlowable(width="100%", thickness=1.2, color=IISER_RED,
+                       hAlign='LEFT', spaceAfter=10)
         ]
 
     # Generate chart images to temp files
@@ -336,11 +594,22 @@ def generate_gpu_report(data: dict) -> bytes:
     tmp_bar  = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_gpu_bar_')
     tmp_acct = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_gpu_acct_')
     tmp_usr  = tempfile.NamedTemporaryFile(suffix='.png', delete=False, prefix='hpc_gpu_usr_')
-    for f in [tmp_pie, tmp_bar, tmp_acct, tmp_usr]:
+    tmp_usr_donut = tempfile.NamedTemporaryFile(
+    suffix='.png',
+    delete=False,
+    prefix='hpc_gpu_usr_donut_'
+)
+    tmp_acct_donut = tempfile.NamedTemporaryFile(
+    suffix='.png',
+    delete=False,
+    prefix='hpc_gpu_acct_donut_'
+)
+    for f in [tmp_pie, tmp_bar, tmp_acct, tmp_usr, tmp_acct_donut, tmp_usr_donut]:
         f.close()
     charts_ok    = False
     acct_chart_ok = False
     user_chart_ok = False
+    acct_donut_ok = False
 
     try:
         if gpu_metrics:
@@ -357,19 +626,35 @@ def generate_gpu_report(data: dict) -> bytes:
 
         if acct_list:
             acct_chart_ok = _make_gpu_accounts_hbar(acct_list, tmp_acct.name)
+            acct_donut_ok = _make_gpu_accounts_donut(acct_list, tmp_acct_donut.name)
+            print("ACCOUNT DONUT CREATED:", acct_donut_ok)
+            print("ACCOUNT DONUT FILE:", tmp_acct_donut.name)
         if all_users:
             user_chart_ok = _make_gpu_users_hbar(all_users, tmp_usr.name)
+            user_donut_ok = False
+
+            if all_users:
+                user_donut_ok = _make_gpu_users_donut(
+                all_users,
+                tmp_usr_donut.name
+            )
 
         pdf_bytes = _build_pdf(
             cluster_name, start_str, end_str, generated_at,
             s, section_header, gpu_metrics, charts_ok,
             tmp_pie.name, tmp_bar.name,
-            acct_list, all_users, acct_chart_ok, user_chart_ok,
-            tmp_acct.name, tmp_usr.name
+            acct_list, all_users, acct_chart_ok,
+            acct_donut_ok,
+            user_chart_ok,
+            tmp_acct.name,
+            tmp_acct_donut.name,
+            tmp_usr.name,
+            user_donut_ok,
+            tmp_usr_donut.name
         )
 
     finally:
-        for p in [tmp_pie.name, tmp_bar.name, tmp_acct.name, tmp_usr.name]:
+        for p in [tmp_pie.name, tmp_bar.name, tmp_acct.name, tmp_usr.name, tmp_acct_donut.name, tmp_usr_donut.name]:
             try:
                 os.unlink(p)
             except OSError:
@@ -382,8 +667,10 @@ def _build_pdf(
     cluster_name, start_str, end_str, generated_at,
     s, section_header, gpu_metrics, charts_ok,
     pie_path, bar_path,
-    acct_list, all_users, acct_chart_ok, user_chart_ok,
-    acct_path, usr_path
+    acct_list, all_users,
+    acct_chart_ok, acct_donut_ok,
+    user_chart_ok,
+    acct_path, acct_donut_path, usr_path, user_donut_ok, usr_donut_path
 ) -> bytes:
 
     buf = io.BytesIO()
@@ -409,45 +696,126 @@ def _build_pdf(
     # ----------------------------------------------------------------
     # PAGE 1 — COVER
     # ----------------------------------------------------------------
-    story.append(Spacer(1, 3 * cm))
+    story.append(Spacer(1, 0.15 * cm))
 
-    logo_table = Table(
-        [[Paragraph("IISER PUNE", ParagraphStyle(
-            'Logo', fontSize=17, fontName='Helvetica-Bold',
-            textColor=WHITE, alignment=TA_CENTER
-        ))]],
-        colWidths=[6 * cm], rowHeights=[1.8 * cm]
+    institute_style = ParagraphStyle(
+        'InstituteName', fontSize=16, fontName='Helvetica-Bold',
+        textColor=DARK_BLUE, leading=19
     )
-    logo_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), DARK_BLUE),
-        ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(Table([[logo_table]], colWidths=[content_w]))
-    story.append(Spacer(1, 1 * cm))
+    institute_full_style = ParagraphStyle(
+        'InstituteFull', fontSize=10.5, fontName='Helvetica',
+        textColor=DARK_GREY, leading=13, spaceBefore=2
+    )
+    institute_sub_style = ParagraphStyle(
+        'InstituteSub', fontSize=8, fontName='Helvetica',
+        textColor=MID_GREY, leading=10, spaceBefore=2
+    )
 
+    if os.path.exists(COVER_LOGO_PATH) and os.path.getsize(COVER_LOGO_PATH) > 0:
+        logo_img = Image(COVER_LOGO_PATH, width=2.6 * cm, height=2.6 * cm)
+    else:
+        logo_img = Paragraph("IISER<br/>PUNE", ParagraphStyle(
+            'LogoFallback', fontSize=10, fontName='Helvetica-Bold',
+            textColor=DARK_BLUE, alignment=TA_CENTER
+        ))
+
+    institute_text = [
+        Paragraph("IISER PUNE", institute_style),
+        Paragraph("Indian Institute of Science Education and Research Pune", institute_full_style),
+        Paragraph("Autonomous Institution under Ministry of Education, Govt. of India", institute_sub_style),
+    ]
+
+    header_row = Table(
+        [[logo_img, institute_text]],
+        colWidths=[3.2 * cm, content_w - 3.2 * cm],
+        rowHeights=[2.8 * cm]
+    )
+    header_row.setStyle(TableStyle([
+        ('VALIGN',     (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN',      (0, 0), (0, 0),   'LEFT'),
+        #('BACKGROUND', (1, 0), (1, 0),   IISER_RED),
+        ('LEFTPADDING',  (0, 0), (0, 0), 4),
+        ('RIGHTPADDING', (0, 0), (0, 0), 4),
+        ('LEFTPADDING',  (2, 0), (2, 0), 10),
+    ]))
+    story.append(header_row)
+    story.append(Spacer(1, 0.3 * cm))
+    story.append(HRFlowable(width="100%", thickness=1.3, color=IISER_RED, spaceAfter=18))
+
+    eyebrow_style = ParagraphStyle(
+        'Eyebrow', fontSize=9, fontName='Helvetica-Bold',
+        textColor=IISER_RED, alignment=TA_CENTER, spaceAfter=6,
+        leading=11
+    )
+    story.append(Paragraph("HPC PORTAL — AUTOMATED ANALYTICS REPORT", eyebrow_style))
     story.append(Paragraph("High Performance Computing Portal", s['title']))
+    story.append(Spacer(1, 0.15 * cm))
     story.append(Paragraph("GPU Utilization Report", s['subtitle']))
-    story.append(Spacer(1, 0.6 * cm))
-    story.append(HRFlowable(width="70%", thickness=1.5, color=LIGHT_BLUE, spaceAfter=20))
+    story.append(Spacer(1, 0.55 * cm))
+
+    asterisk_style = ParagraphStyle(
+        'Asterisks', fontSize=11, fontName='Helvetica',
+        textColor=MID_GREY, alignment=TA_CENTER, spaceAfter=18
+    )
+    story.append(Paragraph("*&nbsp;&nbsp;&nbsp;*&nbsp;&nbsp;&nbsp;*", asterisk_style))
+
+    particulars_header = Table(
+        [["REPORT PARTICULARS"]], colWidths=[content_w]
+    )
+    particulars_header.setStyle(TableStyle([
+        ('BACKGROUND',  (0, 0), (-1, -1), DARK_BLUE),
+        ('TEXTCOLOR',   (0, 0), (-1, -1), WHITE),
+        ('FONTNAME',    (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0, 0), (-1, -1), 10),
+        ('ALIGN',       (0, 0), (-1, -1), 'LEFT'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('ROWPADDING',  (0, 0), (-1, -1), 7),
+    ]))
+    story.append(particulars_header)
 
     cover_rows = [
-        ["Cluster",       cluster_name.upper()],
-        ["Report Period", f"{start_str}  →  {end_str}"],
-        ["Generated",     generated_at],
-        ["Report Type",   "GPU (gres/gpu) Utilization Analysis"],
+        ["Cluster Name",   f": {cluster_name.upper()}"],
+        ["Report Type",    ": GPU (gres/gpu) Utilization Analysis"],
+        ["Report Period",  f": {start_str}  to  {end_str}"],
+        ["Generated On",   f": {generated_at}"],
+        ["Generated By",   ": IISER Pune HPC Portal (Automated System)"],
+        ["Classification", ": Internal — Restricted Circulation"],
     ]
-    ct = Table(cover_rows, colWidths=[5 * cm, 9 * cm])
+    ct = Table(cover_rows, colWidths=[4.2 * cm, content_w - 4.2 * cm])
     ct.setStyle(TableStyle([
         ('FONTNAME',   (0, 0), (0, -1), 'Helvetica-Bold'),
         ('FONTNAME',   (1, 0), (1, -1), 'Helvetica'),
-        ('FONTSIZE',   (0, 0), (-1, -1), 11),
+        ('FONTSIZE',   (0, 0), (-1, -1), 10),
         ('TEXTCOLOR',  (0, 0), (0, -1), DARK_BLUE),
         ('TEXTCOLOR',  (1, 0), (1, -1), DARK_GREY),
         ('ROWPADDING', (0, 0), (-1, -1), 6),
-        ('LINEBELOW',  (0, 0), (-1, -2), 0.5, colors.HexColor("#f0f0f0")),
+        ('LEFTPADDING',(0, 0), (-1, -1), 10),
+        ('BOX',        (0, 0), (-1, -1), 0.6, colors.HexColor("#dde3ea")),
     ]))
-    story.append(Table([[ct]], colWidths=[content_w]))
+    story.append(ct)
+    story.append(Spacer(1, 0.7 * cm))
+
+    disclaimer_style = ParagraphStyle(
+        'Disclaimer', fontSize=8, fontName='Helvetica',
+        textColor=MID_GREY, alignment=TA_CENTER, leading=11
+    )
+    story.append(Paragraph(
+        "This report is auto-generated by the IISER Pune HPC Portal.<br/>"
+        "For queries: hpc-support@iiserpune.ac.in  |  IISER Pune, Dr. Homi Bhabha Road, Pune — 411 008",
+        disclaimer_style
+    ))
+    story.append(Spacer(1, 0.4 * cm))
+
+    badge = Table([["FOR OFFICIAL USE ONLY"]], colWidths=[5.2 * cm])
+    badge.setStyle(TableStyle([
+        ('BOX',        (0, 0), (-1, -1), 0.8, DARK_BLUE),
+        ('FONTNAME',   (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE',   (0, 0), (-1, -1), 8),
+        ('TEXTCOLOR',  (0, 0), (-1, -1), DARK_BLUE),
+        ('ALIGN',      (0, 0), (-1, -1), 'CENTER'),
+        ('ROWPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(Table([[badge]], colWidths=[content_w], style=[('ALIGN', (0,0), (-1,-1), 'CENTER')]))
     story.append(PageBreak())
 
     # ----------------------------------------------------------------
@@ -492,14 +860,56 @@ def _build_pdf(
         story += section_header("Visual Analysis")
 
         if charts_ok and os.path.exists(pie_path) and os.path.getsize(pie_path) > 0:
-            pie_img = Image(pie_path, width=8.5 * cm, height=6.2 * cm)
-            bar_img = Image(bar_path, width=9 * cm, height=6.2 * cm)
-            chart_t = Table([[pie_img, bar_img]], colWidths=[9 * cm, 9.5 * cm])
-            chart_t.setStyle(TableStyle([
-                ('ALIGN',  (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+
+            pie_img = Image(
+                pie_path,
+                width=15 * cm,
+                height=12 * cm
+                )
+
+            pie_box = Table([[pie_img]])
+            pie_box.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.6, colors.HexColor("#cfd6df")),
+            ('LEFTPADDING', (0,0), (-1,-1), 4),
+            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
             ]))
-            story.append(chart_t)
+
+            story.append(pie_box)
+
+            story.append(Spacer(1, 0.08 * cm))
+
+            story.append(Paragraph(
+            "FIG. 2A — GPU UTILIZATION DISTRIBUTION",
+            s['figure_caption']
+            ))
+
+            story.append(Spacer(1, 0.35 * cm))
+
+            bar_img = Image(
+                bar_path,
+                width=15 * cm,
+                height=12 * cm
+                )
+
+            bar_box = Table([[bar_img]])
+            bar_box.setStyle(TableStyle([
+                ('BOX', (0,0), (-1,-1), 0.6, colors.HexColor("#cfd6df")),
+                ('LEFTPADDING', (0,0), (-1,-1), 4),
+                ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ]))
+
+            story.append(bar_box)
+
+            story.append(Spacer(1, 0.08 * cm))
+
+            story.append(Paragraph(
+            "FIG. 2B — GPU UTILIZATION BREAKDOWN",
+            s['figure_caption']
+        ))
 
     else:
         # GPU unavailable notice
@@ -527,73 +937,127 @@ def _build_pdf(
     # ----------------------------------------------------------------
     # PAGE 3 — OBSERVATIONS
     # ----------------------------------------------------------------
-    story += section_header("GPU Observations")
-    story.append(Paragraph(
-        f"Automatically generated observations for {cluster_name.upper()} "
-        f"GPU utilization, period {start_str} to {end_str}.",
-        s['body']
-    ))
-    story.append(Spacer(1, 0.4 * cm))
+    # story += section_header("GPU Observations")
+    # story.append(Paragraph(
+    #     f"Automatically generated observations for {cluster_name.upper()} "
+    #     f"GPU utilization, period {start_str} to {end_str}.",
+    #     s['body']
+    # ))
+    # story.append(Spacer(1, 0.4 * cm))
 
-    if gpu_metrics:
-        obs = _gpu_observations(gpu_metrics)
-        for i, o in enumerate(obs, 1):
-            story.append(Paragraph(f"<b>{i}.</b>  {o}", s['obs_item']))
-    else:
-        story.append(Paragraph(
-            "No GPU observations available — data was unavailable for this period.",
-            s['unavailable']
-        ))
+    # if gpu_metrics:
+    #     obs = _gpu_observations(gpu_metrics)
+    #     for i, o in enumerate(obs, 1):
+    #         story.append(Paragraph(f"<b>{i}.</b>  {o}", s['obs_item']))
+    # else:
+    #     story.append(Paragraph(
+    #         "No GPU observations available — data was unavailable for this period.",
+    #         s['unavailable']
+    #     ))
 
     # ----------------------------------------------------------------
     # NEW PAGE — GPU RESOURCE CONSUMPTION BY ACCOUNT
     # ----------------------------------------------------------------
-    story.append(PageBreak())
+    # story.append(PageBreak())
     story += section_header("GPU Resource Consumption by Account")
 
     active_accounts = [a for a in acct_list if (a.get('gpu_hours') or 0) > 0]
 
     if active_accounts:
-        top_accts = active_accounts[:10]
-        acct_rows = [["Account", "GPU Hours", "Usage %", "Active Users"]]
-        for a in top_accts:
-            active_users = len([u for u in a.get('users', [])
-                                if (u.get('gpu_hours') or 0) > 0])
-            acct_rows.append([
-                a['account'],
-                f"{a['gpu_hours']:,.1f}",
-                f"{a['gpu_pct']:.2f}%" if a.get('gpu_pct') is not None else "—",
-                str(active_users),
-            ])
+            top_accts = active_accounts[:10]
+            acct_rows = [["Account", "GPU Hours", "Usage %", "Active Users"]]
+            for a in top_accts:
+                active_users = len([u for u in a.get('users', [])
+                                    if (u.get('gpu_hours') or 0) > 0])
+                acct_rows.append([
+                    a['account'],
+                    f"{a['gpu_hours']:,.1f}",
+                    f"{a['gpu_pct']:.2f}%" if a.get('gpu_pct') is not None else "—",
+                    str(active_users),
+                ])
 
-        at = Table(acct_rows, colWidths=[6 * cm, 4 * cm, 3.5 * cm, 3.5 * cm])
-        at.setStyle(TableStyle([
-            ('BACKGROUND',  (0, 0), (-1, 0),  DARK_BLUE),
-            ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
-            ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
-            ('FONTSIZE',    (0, 0), (-1, 0),  10),
-            ('ALIGN',       (1, 0), (-1, -1), 'CENTER'),
-            ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
-            *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
-              for i in range(1, len(acct_rows), 2)],
-            ('FONTSIZE',    (0, 1), (-1, -1), 9.5),
-            ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
-            ('ROWPADDING',  (0, 0), (-1, -1), 7),
-            ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
-            ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
-        ]))
-        story.append(at)
-        story.append(Spacer(1, 0.7 * cm))
+            at = Table(acct_rows, colWidths=[6 * cm, 4 * cm, 3.5 * cm, 3.5 * cm])
+            at.setStyle(TableStyle([
+                ('BACKGROUND',  (0, 0), (-1, 0),  DARK_BLUE),
+                ('TEXTCOLOR',   (0, 0), (-1, 0),  WHITE),
+                ('FONTNAME',    (0, 0), (-1, 0),  'Helvetica-Bold'),
+                ('FONTSIZE',    (0, 0), (-1, 0),  10),
+                ('ALIGN',       (1, 0), (-1, -1), 'CENTER'),
+                ('ALIGN',       (0, 0), (0, -1),  'LEFT'),
+                *[('BACKGROUND', (0, i), (-1, i), LIGHT_GREY)
+                for i in range(1, len(acct_rows), 2)],
+                ('FONTSIZE',    (0, 1), (-1, -1), 9.5),
+                ('TEXTCOLOR',   (0, 1), (-1, -1), DARK_GREY),
+                ('ROWPADDING',  (0, 0), (-1, -1), 7),
+                ('GRID',        (0, 0), (-1, -1), 0.4, colors.HexColor("#dde3ea")),
+                ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
+            ]))
+            story.append(at)
+            story.append(Spacer(1, 0.7 * cm))
 
-        if acct_chart_ok and os.path.exists(acct_path) and os.path.getsize(acct_path) > 0:
-            bar_h = min(7 * cm, max(4 * cm, len(top_accts) * 0.6 * cm))
+            story += section_header("Visual Analysis")
+
             content_w = W - 1.8 * cm - 1.8 * cm
-            story.append(Image(acct_path, width=content_w, height=bar_h))
-    else:
-        story.append(Paragraph(
-            "No GPU account consumption data available for this period.",
-            s['unavailable']
-        ))
+            if acct_donut_ok and os.path.exists(acct_donut_path) and os.path.getsize(acct_donut_path) > 0:
+
+                donut_img = Image(
+                    acct_donut_path,
+                    width=15 * cm,
+                    height=11 * cm
+                    )
+
+                donut_box = Table([[donut_img]])
+                donut_box.setStyle(TableStyle([
+                ('BOX', (0,0), (-1,-1), 0.6, colors.HexColor("#cfd6df")),
+                ('LEFTPADDING', (0,0), (-1,-1), 4),
+                ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ]))
+
+                story.append(donut_box)
+
+                story.append(
+                    Paragraph(
+                        "FIG. 3A — GPU HOURS DISTRIBUTION BY ACCOUNT",
+                            s['figure_caption']
+                     )
+                )
+
+                story.append(Spacer(1, 0.35 * cm))
+                story.append(PageBreak())
+            else:
+                story.append(Paragraph(
+                    "No GPU account consumption data available for this period.",
+                    s['unavailable']
+            ))
+            if acct_chart_ok and os.path.exists(acct_path) and os.path.getsize(acct_path) > 0:
+
+                bar_h = min(11 * cm, max(8 * cm, len(top_accts) * 0.8 * cm))
+
+                bar_img = Image(
+                acct_path,
+                width=content_w,
+                height=bar_h
+                )
+
+                bar_box = Table([[bar_img]])
+                bar_box.setStyle(TableStyle([
+                ('BOX', (0,0), (-1,-1), 0.6, colors.HexColor("#cfd6df")),
+                ('LEFTPADDING', (0,0), (-1,-1), 4),
+                ('RIGHTPADDING', (0,0), (-1,-1), 4),
+                ('TOPPADDING', (0,0), (-1,-1), 4),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+                ]))
+
+                story.append(bar_box)
+
+                story.append(
+                    Paragraph(
+                    "FIG. 3B — TOP GPU CONSUMING ACCOUNTS",
+                    s['figure_caption']
+                    )
+                )
 
     # ----------------------------------------------------------------
     # NEW PAGE — TOP GPU USERS
@@ -635,10 +1099,63 @@ def _build_pdf(
         story.append(ut)
         story.append(Spacer(1, 0.7 * cm))
 
-        if user_chart_ok and os.path.exists(usr_path) and os.path.getsize(usr_path) > 0:
-            bar_h = min(7 * cm, max(4 * cm, len(display_users) * 0.55 * cm))
-            content_w = W - 1.8 * cm - 1.8 * cm
-            story.append(Image(usr_path, width=content_w, height=bar_h))
+        if user_donut_ok and os.path.exists(usr_donut_path):
+
+                donut_img = Image(
+                    usr_donut_path,
+                    width=15 * cm,
+                    height=11 * cm
+                )
+
+                donut_box = Table([[donut_img]])
+                donut_box.setStyle(TableStyle([
+                    ('BOX',(0,0),(-1,-1),0.6,colors.HexColor("#cfd6df"))
+                ]))
+
+                story.append(donut_box)
+
+                story.append(
+                    Paragraph(
+                        "FIG. 5A — GPU HOURS DISTRIBUTION BY USER",
+                        s['figure_caption']
+                    )
+                )
+
+        bar_img = Image(
+            usr_path,
+            width=content_w,
+            height=11 * cm
+)   
+        
+    if user_chart_ok and os.path.exists(usr_path) and os.path.getsize(usr_path) > 0:
+
+        content_w = W - 1.8 * cm - 1.8 * cm
+
+        bar_img = Image(
+            usr_path,
+            width=content_w,
+            height=11 * cm
+    )
+
+        bar_box = Table([[bar_img]])
+        bar_box.setStyle(TableStyle([
+            ('BOX', (0,0), (-1,-1), 0.6, colors.HexColor("#cfd6df")),
+            ('LEFTPADDING', (0,0), (-1,-1), 4),
+            ('RIGHTPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+         ]))
+
+        story.append(bar_box)
+
+        story.append(
+            Paragraph(
+                "FIG. 5B — TOP GPU CONSUMING USERS",
+                s['figure_caption']
+            )
+        )
+
+        story.append(Spacer(1, 0.3 * cm))
     else:
         story.append(Paragraph(
             "No GPU user consumption data available for this period.",
