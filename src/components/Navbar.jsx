@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ProtectedLink from "./ProtectedLink";
-import LoginModal from "./LoginModal";
 import image from "./image/images.png";
 import { clusterStatusPath } from "../config/clusters";
 
@@ -12,9 +11,6 @@ export default function Navbar() {
     useAuth();
 
   const navigate = useNavigate();
-
-  const [showLogin, setShowLogin] =
-    useState(false);
 
   const [profileOpen, setProfileOpen] =
     useState(false);
@@ -281,12 +277,10 @@ export default function Navbar() {
                 </div>
               )}
             </div>
-          ) : (
+           ) : (
             <button
               style={styles.loginBtn}
-              onClick={() =>
-                setShowLogin(true)
-              }
+              onClick={() => navigate("/login")}
             >
               Login
             </button>
@@ -294,14 +288,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {showLogin && (
-        <LoginModal
-          onClose={() =>
-            setShowLogin(false)
-          }
-          redirectTo="/dashboard"
-        />
-      )}
+      
     </>
   );
 }

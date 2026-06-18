@@ -9,10 +9,7 @@ USERS = {
         "password": "admin123",
         "role": "admin",
     },
-    "test": {
-        "password": "test123",
-        "role": "user",
-    },
+    
 }
 
 # Temporary hardcoded cluster registry — move to DB later

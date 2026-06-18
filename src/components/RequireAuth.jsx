@@ -24,7 +24,7 @@ export default function RequireAuth({ children }) {
 
   // Not authenticated → kick back to homepage
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return children;

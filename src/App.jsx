@@ -17,10 +17,11 @@ import {
 import RequireAuth from "./components/RequireAuth";
 import { AuthProvider } from "./context/AuthContext";
 
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
 
 import ClusterStatus from "./pages/ClusterStatus";
+import PublicLayout from "./layouts/PublicLayout";
+import PortalLayout from "./layouts/PortalLayout";
+import Login from "./pages/Login";
 import ClusterDocs from "./pages/ClusterDocs";
 import {
   DEFAULT_CLUSTER_ID,
@@ -28,103 +29,113 @@ import {
   clusterStatusPath,
 } from "./config/clusters";
 
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        {/* Global Navbar */}
-        <Navbar />
-
         <Routes>
 
-          {/* Home */}
-          <Route
-            path="/"
-            element={<Home />}
-          />
+          {/* ---------------- PUBLIC LAYOUT (no navbar/footer) ---------------- */}
+          <Route element={<PublicLayout />}>
+            <Route path="/login" element={<Login />} />
+          </Route>
 
-          {/* Dashboard */}
-          <Route
-            path="/dashboard"
-            element={
-              <RequireAuth>
-                <Dashboard />
-              </RequireAuth>
-            }
-          />
+          {/* ---------------- PORTAL LAYOUT (navbar + footer) ---------------- */}
+          <Route element={<PortalLayout />}>
 
-          {/* Protected Pages */}
-          <Route
-            path="/jobs"
-            element={
-              <RequireAuth>
-                <Jobs />
-              </RequireAuth>
-            }
-          />
+            {/* Home */}
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <Home />
+                </RequireAuth>
+              }
+            />
 
-          <Route
-            path="/docs"
-            element={
-              <RequireAuth>
-                <Docs />
-              </RequireAuth>
-            }
-          />
+            {/* Dashboard */}
+            <Route
+              path="/dashboard"
+              element={
+                <RequireAuth>
+                  <Dashboard />
+                </RequireAuth>
+              }
+            />
 
-          <Route
-            path="/support"
-            element={
-              <RequireAuth>
-                <Support />
-              </RequireAuth>
-            }
-          />
+            {/* Protected Pages */}
+            <Route
+              path="/jobs"
+              element={
+                <RequireAuth>
+                  <Jobs />
+                </RequireAuth>
+              }
+            />
 
-          {/* Legacy redirects */}
-          <Route
-            path="/cluster-status"
-            element={
-              <Navigate
-                to={clusterStatusPath(DEFAULT_CLUSTER_ID)}
-                replace
-              />
-            }
-          />
+            <Route
+              path="/docs"
+              element={
+                <RequireAuth>
+                  <Docs />
+                </RequireAuth>
+              }
+            />
 
-          <Route
-            path="/cluster-docs"
-            element={
-              <Navigate
-                to={clusterDocsPath(DEFAULT_CLUSTER_ID)}
-                replace
-              />
-            }
-          />
+            <Route
+              path="/support"
+              element={
+                <RequireAuth>
+                  <Support />
+                </RequireAuth>
+              }
+            />
 
-          {/* Cluster Status */}
-          <Route
-            path="/cluster/:clusterId/status"
-            element={
-              <RequireAuth>
-                <ClusterStatus />
-              </RequireAuth>
-            }
-          />
+            {/* Legacy redirects */}
+            <Route
+              path="/cluster-status"
+              element={
+                <Navigate
+                  to={clusterStatusPath(DEFAULT_CLUSTER_ID)}
+                  replace
+                />
+              }
+            />
 
-          {/* Cluster Docs */}
-          <Route
-            path="/cluster/:clusterId/reports"
-            element={
-              <RequireAuth>
-                <ClusterDocs />
-              </RequireAuth>
-            }
-          />
+            <Route
+              path="/cluster-docs"
+              element={
+                <Navigate
+                  to={clusterDocsPath(DEFAULT_CLUSTER_ID)}
+                  replace
+                />
+              }
+            />
+
+            {/* Cluster Status */}
+            <Route
+              path="/cluster/:clusterId/status"
+              element={
+                <RequireAuth>
+                  <ClusterStatus />
+                </RequireAuth>
+              }
+            />
+
+            {/* Cluster Docs */}
+            <Route
+              path="/cluster/:clusterId/reports"
+              element={
+                <RequireAuth>
+                  <ClusterDocs />
+                </RequireAuth>
+              }
+            />
+
+          </Route>
 
         </Routes>
-
-        <Footer />
       </BrowserRouter>
     </AuthProvider>
   );

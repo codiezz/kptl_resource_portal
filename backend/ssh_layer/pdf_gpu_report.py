@@ -58,7 +58,20 @@ IISER_RED_HEX = "#d80100"  # plain hex string for matplotlib (ReportLab uses IIS
 COVER_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "iiser_logo.png")  # relative path to logo image for cover page
 # Navy-dominant, non-monochromatic palette for GPU charts.
 # Red reserved as a sparing accent (used only for the "Down" / attention metric).
-CHART_COLORS_GPU = ["#1a3a5c", "#2c5f8a", "#5a8fb8", "#d80100", "#7f8c8d"]
+CHART_COLORS_GPU = [
+    "#1B3A61",
+    "#336699",
+    "#5E90BF",
+    "#E10600",
+    "#8AA1A8",
+    "#264653",
+    "#457B9D",
+    "#6D9DC5",
+    "#B56576",
+    "#2A9D8F",
+    "#577590",
+    "#4D648D",
+]
 
 W, H = A4
 
@@ -341,8 +354,29 @@ def _make_gpu_users_hbar(users: list, path: str, top_n: int = 12) -> bool:
     # Top 3 by GPU hours are highlighted red ("heavy usage"); rest navy.
     heavy_cutoff = min(3, len(top))
     heavy_logins = {u['login'] for u in top[:heavy_cutoff]}
-    clrs = [IISER_RED_HEX if u['login'] in heavy_logins else "#1a3a5c"
-            for u in reversed(top)]
+    blue_palette = [
+    "#1B3A61",
+    "#29527A",
+    "#376A93",
+    "#4B82AA",
+    "#6199C0",
+    "#78AFD4",
+    "#90C4E6",
+    "#A9D5F0",
+    "#C1E2F7"
+]
+
+    clrs = []
+
+    for idx, u in enumerate(reversed(top)):
+
+        if u['login'] in heavy_logins:
+            clrs.append(IISER_RED_HEX)
+
+        else:
+            clrs.append(
+                blue_palette[idx % len(blue_palette)]
+            )
 
     fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
     bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.6, edgecolor='white')
@@ -399,29 +433,29 @@ def _make_gpu_users_donut(users: list, path: str, top_n: int = 12) -> bool:
 
     import numpy as np
 
-    for wedge, label, value in zip(wedges, labels, values):
+    ax.set_xlim(-1.3, 1.3)
+    ax.set_ylim(-1.3, 1.3)
+
+    small = [(w, l, v) for w, l, v in zip(wedges, labels, values) if 0 < v / total * 100 < 1]
+
+    for s_idx, (wedge, label, value) in enumerate(small):
 
         pct = value / total * 100
+        angle = (wedge.theta1 + wedge.theta2) / 2
 
-        if 0 < pct < 5:
+        x = np.cos(np.deg2rad(angle))
+        y = np.sin(np.deg2rad(angle))
 
-            angle = (wedge.theta1 + wedge.theta2) / 2
+        ytext = (1.12 if y >= 0 else -1.12) + s_idx * 0.12
 
-            x = np.cos(np.deg2rad(angle))
-            y = np.sin(np.deg2rad(angle))
-
-            ax.annotate(
-                f"{label}\n({pct:.1f}%)",
-                xy=(x * 0.85, y * 0.85),
-                xytext=(x * 1.15, y * 1.15),
-                arrowprops=dict(
-                    arrowstyle='-',
-                    lw=1,
-                    color='#555555'
-                ),
-                fontsize=8
-            )
-
+        ax.annotate(
+            f"{label}\n({pct:.1f}%)",
+            xy=(x * 0.80, y * 0.80),
+            xytext=(x * 1.05, ytext),
+            arrowprops=dict(arrowstyle='-', lw=1, color='#555555'),
+            fontsize=8,
+            ha='center'
+        )
     legend_labels = [
         f"{label} — {value:,.1f} hrs"
         for label, value in zip(labels, values)
@@ -748,6 +782,7 @@ def _build_pdf(
         leading=11
     )
     story.append(Paragraph("HPC PORTAL — AUTOMATED ANALYTICS REPORT", eyebrow_style))
+    story.append(Spacer(1, 0.05 * cm))
     story.append(Paragraph("High Performance Computing Portal", s['title']))
     story.append(Spacer(1, 0.15 * cm))
     story.append(Paragraph("GPU Utilization Report", s['subtitle']))
@@ -1098,6 +1133,7 @@ def _build_pdf(
         ]))
         story.append(ut)
         story.append(Spacer(1, 0.7 * cm))
+        story += section_header("Visual Analysis")
 
         if user_donut_ok and os.path.exists(usr_donut_path):
 
