@@ -96,7 +96,7 @@ def _make_gpu_pie(metrics: dict, path: str):
 
     total = sum(sizes) or 1
 
-    fig, ax = plt.subplots(figsize=(7,7), dpi=250)
+    fig, ax = plt.subplots(figsize=(7,7), dpi=300)
 
     wedges, _ = ax.pie(
     sizes,
@@ -104,7 +104,7 @@ def _make_gpu_pie(metrics: dict, path: str):
     startangle=90,
     radius=0.85,
     wedgeprops={
-        'width': 0.35,
+        'width': 0.60,
         'edgecolor': 'white',
         'linewidth': 2
     }
@@ -169,8 +169,8 @@ def _make_gpu_bar(metrics: dict, path: str):
     ]
     clrs = CHART_COLORS_GPU[:len(labels)]
 
-    fig, ax = plt.subplots(figsize=(10,6), dpi=300)
-    bars = ax.bar(labels, values, color=clrs, width=0.5,
+    fig, ax = plt.subplots(figsize=(7,7), dpi=300)
+    bars = ax.bar(labels, values, color=clrs, width=0.4,
                   edgecolor='white', linewidth=1.2)
 
     for bar, val in zip(bars, values):
@@ -179,7 +179,7 @@ def _make_gpu_bar(metrics: dict, path: str):
                 bar.get_x() + bar.get_width() / 2,
                 bar.get_height() + 0.5,
                 f'{val:.1f}%', ha='center', va='bottom',
-                fontsize=9, fontweight='bold', color='#2c3e50'
+                fontsize=10, fontweight='bold', color='#2c3e50'
             )
 
     ax.set_ylabel("Percentage (%)", fontsize=9, color='#2c3e50')
@@ -221,10 +221,8 @@ def _make_gpu_accounts_hbar(accounts: list, path: str, top_n: int = 10) -> bool:
         else:
             clrs.append("#1a3a5c")          # institutional navy
 
-    fig, ax = plt.subplots(
-    figsize=(12, max(5.5, len(top) * 0.7))
-)
-    bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.6, edgecolor='#ffffff',
+    fig, ax = plt.subplots(figsize=(7.5, max(3.5, len(top) * 0.45)))
+    bars = ax.barh(labels, values, color=clrs[:len(labels)], height=0.35, edgecolor='#ffffff',
 linewidth=0.7)
 
     max_val = max(values) if values else 1
@@ -232,16 +230,16 @@ linewidth=0.7)
         ax.text(
             bar.get_width() + max_val * 0.01,
             bar.get_y() + bar.get_height() / 2,
-            f'{val:,.1f} hrs', va='center', ha='left', fontsize=8, color='#2c3e50'
+            f'{val:,.1f} hrs', va='center', ha='left', fontsize=9, color='#2c3e50'
         )
 
-    ax.set_xlabel("GPU Hours", fontsize=9, color='#2c3e50')
+    ax.set_xlabel("GPU Hours", fontsize=10, fontweight='bold', color='#2c3e50')
     ax.set_xlim(0, max_val * 1.18)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color('#cccccc')
     ax.spines['bottom'].set_color('#cccccc')
-    ax.tick_params(colors='#555555', labelsize=8.5)
+    ax.tick_params(colors='#555555', labelsize=10)
     ax.xaxis.grid(
     True,
     linestyle=':',
@@ -267,15 +265,15 @@ def _make_gpu_accounts_donut(accounts: list, path: str, top_n: int = 10) -> bool
 
     colors = CHART_COLORS_GPU[:len(labels)]
 
-    fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+    fig, ax = plt.subplots(figsize=(7, 7), dpi=300)
 
     wedges, _ = ax.pie(
     values,
     colors=colors,
     startangle=90,
-    radius=1.0,
+    radius=0.85,
     wedgeprops={
-        'width': 0.35,
+        'width': 0.60,
         'edgecolor': 'white',
         'linewidth': 2
     }
@@ -320,7 +318,7 @@ def _make_gpu_accounts_donut(accounts: list, path: str, top_n: int = 10) -> bool
     loc='center left',
     bbox_to_anchor=(1.02, 0.5),
     frameon=False,
-    fontsize=8.5
+    fontsize=11
 )
 
     ax.set_title(
@@ -386,22 +384,22 @@ def _make_gpu_users_hbar(users: list, path: str, top_n: int = 12) -> bool:
         ax.text(
             bar.get_width() + max_val * 0.01,
             bar.get_y() + bar.get_height() / 2,
-            f'{val:,.1f}', va='center', ha='left', fontsize=8, color='#2c3e50'
+            f'{val:,.1f}', va='center', ha='left', fontsize=9, color='#2c3e50'
         )
 
-    ax.set_xlabel("GPU Hours", fontsize=9, color='#2c3e50')
+    ax.set_xlabel("GPU Hours", fontsize=10, color='#2c3e50')
     ax.set_title(f"Top {len(top)} Users by GPU Hours",
-                 fontsize=10, fontweight='bold', color='#1a3a5c')
+                 fontsize=11, fontweight='bold', color='#1a3a5c')
     ax.set_xlim(0, max_val * 1.18)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_color('#cccccc')
     ax.spines['bottom'].set_color('#cccccc')
-    ax.tick_params(colors='#555555', labelsize=8.5)
+    ax.tick_params(colors='#555555', labelsize=10)
     ax.xaxis.grid(True, linestyle='--', alpha=0.4, color='#aaaaaa')
     ax.set_axisbelow(True)
     plt.tight_layout()
-    plt.savefig(path, dpi=150, bbox_inches='tight', facecolor='white')
+    plt.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     return True
 
@@ -415,15 +413,15 @@ def _make_gpu_users_donut(users: list, path: str, top_n: int = 12) -> bool:
     labels = [u['login'] for u in top]
     values = [u['gpu_hours'] for u in top]
 
-    fig, ax = plt.subplots(figsize=(10, 8), dpi=300)
+    fig, ax = plt.subplots(figsize=(7, 7), dpi=300)
 
     wedges, _ = ax.pie(
         values,
         startangle=90,
-        radius=1.0,
+        radius=0.85,
         colors=CHART_COLORS_GPU[:len(labels)],
         wedgeprops={
-            'width': 0.38,
+            'width': 0.60,
             'edgecolor': 'white',
             'linewidth': 2
         }
@@ -467,7 +465,7 @@ def _make_gpu_users_donut(users: list, path: str, top_n: int = 12) -> bool:
         loc='center left',
         bbox_to_anchor=(1.02, 0.5),
         frameon=False,
-        fontsize=8.5
+        fontsize=11
     )
 
     ax.set_aspect('equal')
@@ -486,6 +484,26 @@ def _make_gpu_users_donut(users: list, path: str, top_n: int = 12) -> bool:
 
 def _header_footer(cluster_name: str, generated_at: str):
     def on_page(canvas, doc):
+        # # Watermark
+        # canvas.saveState()
+
+        # canvas.translate(W / 2, H / 2)
+        # canvas.rotate(40)
+
+        # canvas.setFillGray(0.95)
+
+        # canvas.setFont(
+        #     "Helvetica-Bold",
+        #     110
+        # )
+
+        # canvas.drawCentredString(
+        #     30,
+        #     0,
+        #     "IISER PUNE"
+        # )
+
+        # canvas.restoreState()
         canvas.saveState()
 
         canvas.setFillColor(DARK_BLUE)
@@ -511,6 +529,35 @@ def _header_footer(cluster_name: str, generated_at: str):
 
         canvas.restoreState()
     return on_page
+
+def _watermark():
+
+    def on_page_end(canvas, doc):
+
+        canvas.saveState()
+
+        canvas.translate(W / 2, H / 2)
+
+        canvas.rotate(40)
+
+        canvas.setFillGray(0.60)
+        canvas.setFillAlpha(0.1)
+
+        canvas.setFont(
+            "Helvetica-Bold",
+            120
+        )
+
+        canvas.drawCentredString(
+            30,
+            0,
+            "IISER PUNE"
+        )
+        canvas.setFillAlpha(0.15)
+
+        canvas.restoreState()
+
+    return on_page_end
 
 
 # ---------------------------------------------------------------------------
@@ -613,7 +660,15 @@ def generate_gpu_report(data: dict) -> bytes:
             textColor=DARK_GREY,
             alignment=TA_CENTER,
             spaceAfter=6
-),
+        ),
+        'section_desc': ParagraphStyle(
+        'SectionDesc',
+        fontSize=10,
+        leading=14,
+        fontName='Helvetica',
+        textColor=DARK_GREY,
+        spaceAfter=10
+    )
     }
 
     def section_header(title):
@@ -722,7 +777,8 @@ def _build_pdf(
     )
     template = PageTemplate(
         id='main', frames=[frame],
-        onPage=_header_footer(cluster_name, generated_at)
+        onPage=_header_footer(cluster_name, generated_at),
+        onPageEnd=_watermark()
     )
     doc.addPageTemplates([template])
     story = []
@@ -809,12 +865,12 @@ def _build_pdf(
     story.append(particulars_header)
 
     cover_rows = [
-        ["Cluster Name",   f": {cluster_name.upper()}"],
-        ["Report Type",    ": GPU (gres/gpu) Utilization Analysis"],
-        ["Report Period",  f": {start_str}  to  {end_str}"],
-        ["Generated On",   f": {generated_at}"],
-        ["Generated By",   ": IISER Pune HPC Portal (Automated System)"],
-        ["Classification", ": Internal — Restricted Circulation"],
+        ["Cluster Name", cluster_name.upper()],
+        ["Report Type",    "GPU (gres/gpu) Utilization Analysis"],
+        ["Report Period",  f"{start_str}  to  {end_str}"],
+        ["Generated On",   f"{generated_at}"],
+        ["Generated By",   "IISER Pune HPC Portal (Automated System)"],
+        ["Classification", "Internal — Restricted Circulation"],
     ]
     ct = Table(cover_rows, colWidths=[4.2 * cm, content_w - 4.2 * cm])
     ct.setStyle(TableStyle([
@@ -826,6 +882,7 @@ def _build_pdf(
         ('ROWPADDING', (0, 0), (-1, -1), 6),
         ('LEFTPADDING',(0, 0), (-1, -1), 10),
         ('BOX',        (0, 0), (-1, -1), 0.6, colors.HexColor("#dde3ea")),
+        ('LINEBELOW',  (0, 0), (-1, -2), 0.25, colors.HexColor("#e6ebf0")),
     ]))
     story.append(ct)
     story.append(Spacer(1, 0.7 * cm))
@@ -844,6 +901,7 @@ def _build_pdf(
     badge = Table([["FOR OFFICIAL USE ONLY"]], colWidths=[5.2 * cm])
     badge.setStyle(TableStyle([
         ('BOX',        (0, 0), (-1, -1), 0.8, DARK_BLUE),
+        ('LINEBELOW', (0, 0), (-1, -2), 0.25, colors.HexColor("#e6ebf0")),
         ('FONTNAME',   (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE',   (0, 0), (-1, -1), 8),
         ('TEXTCOLOR',  (0, 0), (-1, -1), DARK_BLUE),
@@ -857,6 +915,30 @@ def _build_pdf(
     # PAGE 2 — EXECUTIVE GPU SUMMARY + ANALYSIS
     # ----------------------------------------------------------------
     story += section_header("Executive GPU Summary")
+    description_text = """
+This section presents an executive overview of GPU resource utilization
+across the reporting period. The metrics summarize the distribution of
+GPU resources between active allocations, idle capacity, maintenance
+downtime, and planned reservations. These values provide a high-level
+assessment of accelerator usage efficiency within the cluster.
+"""
+
+    desc_box = Table(
+        [[Paragraph(description_text, s['section_desc'])]],
+        colWidths=[content_w]
+    )
+
+    desc_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+    ]))
+
+    story.append(desc_box)
+    story.append(Spacer(1, 0.4 * cm))
 
     if gpu_metrics:
         # Summary metrics table
@@ -889,17 +971,42 @@ def _build_pdf(
             ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
         ]))
         story.append(t)
-        story.append(Spacer(1, 0.8 * cm))
+        story.append(Spacer(1, 0.4 * cm))
 
         # Charts
         story += section_header("Visual Analysis")
+        description_text = """
+The following visualizations illustrate the proportional distribution
+of GPU resources and provide a graphical interpretation of overall
+utilization trends. Donut charts emphasize percentage composition,
+while bar charts highlight the relative contribution of each category.
+Together, these figures provide a concise overview of accelerator
+availability, usage, and operational status.
+"""
+
+        desc_box = Table(
+            [[Paragraph(description_text, s['section_desc'])]],
+            colWidths=[content_w]
+        )
+
+        desc_box.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ]))
+
+        story.append(desc_box)
+        story.append(Spacer(1, 0.4 * cm))
 
         if charts_ok and os.path.exists(pie_path) and os.path.getsize(pie_path) > 0:
 
             pie_img = Image(
                 pie_path,
-                width=15 * cm,
-                height=12 * cm
+                width=14 * cm,
+                height=11 * cm
                 )
 
             pie_box = Table([[pie_img]])
@@ -925,7 +1032,7 @@ def _build_pdf(
             bar_img = Image(
                 bar_path,
                 width=15 * cm,
-                height=12 * cm
+                height=11 * cm
                 )
 
             bar_box = Table([[bar_img]])
@@ -995,6 +1102,29 @@ def _build_pdf(
     # ----------------------------------------------------------------
     # story.append(PageBreak())
     story += section_header("GPU Resource Consumption by Account")
+    description_text = """
+GPU consumption is aggregated by project account to identify the primary
+consumers of accelerator resources during the reporting period. These
+statistics provide insight into how GPU capacity is distributed among
+research groups, projects, and organizational units utilizing the cluster.
+"""
+
+    desc_box = Table(
+        [[Paragraph(description_text, s['section_desc'])]],
+        colWidths=[content_w]
+    )
+
+    desc_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+    ]))
+
+    story.append(desc_box)
+    story.append(Spacer(1, 0.4 * cm))
 
     active_accounts = [a for a in acct_list if (a.get('gpu_hours') or 0) > 0]
 
@@ -1028,9 +1158,33 @@ def _build_pdf(
                 ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
             ]))
             story.append(at)
-            story.append(Spacer(1, 0.7 * cm))
+            story.append(Spacer(1, 0.4 * cm))
 
             story += section_header("Visual Analysis")
+            description_text = """
+The following charts compare GPU-hour consumption across active accounts.
+The donut chart illustrates each account's proportional contribution to
+overall GPU utilization, while the horizontal bar chart highlights total
+GPU-hour consumption. Together, these visualizations help identify the
+most resource-intensive projects within the cluster.
+"""
+
+            desc_box = Table(
+                [[Paragraph(description_text, s['section_desc'])]],
+                colWidths=[content_w]
+            )
+
+            desc_box.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+                ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+                ('LEFTPADDING', (0,0), (-1,-1), 10),
+                ('RIGHTPADDING', (0,0), (-1,-1), 10),
+                ('TOPPADDING', (0,0), (-1,-1), 8),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+                ]))
+
+            story.append(desc_box)
+            story.append(Spacer(1, 0.4 * cm))
 
             content_w = W - 1.8 * cm - 1.8 * cm
             if acct_donut_ok and os.path.exists(acct_donut_path) and os.path.getsize(acct_donut_path) > 0:
@@ -1059,7 +1213,7 @@ def _build_pdf(
                      )
                 )
 
-                story.append(Spacer(1, 0.35 * cm))
+                story.append(Spacer(1, 0.08 * cm))
                 story.append(PageBreak())
             else:
                 story.append(Paragraph(
@@ -1099,6 +1253,29 @@ def _build_pdf(
     # ----------------------------------------------------------------
     story.append(PageBreak())
     story += section_header("Top GPU Users by Resource Consumption")
+    description_text = """
+This section identifies individual users with the highest GPU resource
+consumption during the selected reporting period. The presented statistics
+support workload attribution, capacity planning, and identification of
+major computational workloads executed on the cluster infrastructure.
+"""
+
+    desc_box = Table(
+        [[Paragraph(description_text, s['section_desc'])]],
+        colWidths=[content_w]
+    )
+
+    desc_box.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ]))
+
+    story.append(desc_box)
+    story.append(Spacer(1, 0.4 * cm))
 
     # Filter: users with >0 gpu_hours, unless too few
     active_users = [u for u in all_users if (u.get('gpu_hours') or 0) > 0]
@@ -1132,8 +1309,33 @@ def _build_pdf(
             ('LINEBELOW',   (0, 0), (-1, 0),  1.5, DARK_BLUE),
         ]))
         story.append(ut)
-        story.append(Spacer(1, 0.7 * cm))
+        story.append(Spacer(1, 0.4 * cm))
         story += section_header("Visual Analysis")
+        description_text = """
+The user-level visualizations provide a comparative analysis of GPU
+resource consumption across active researchers. The donut chart
+illustrates the proportional share of total GPU utilization, while
+the horizontal bar chart presents absolute GPU-hour consumption for
+each user. These charts help identify dominant workloads and overall
+usage distribution patterns.
+"""
+
+        desc_box = Table(
+            [[Paragraph(description_text, s['section_desc'])]],
+            colWidths=[content_w]
+        )
+
+        desc_box.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#f5f7fa")),
+            ('BOX', (0,0), (-1,-1), 0.5, colors.HexColor("#d6dde6")),
+            ('LEFTPADDING', (0,0), (-1,-1), 10),
+            ('RIGHTPADDING', (0,0), (-1,-1), 10),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ]))
+
+        story.append(desc_box)
+        story.append(Spacer(1, 0.4 * cm))
 
         if user_donut_ok and os.path.exists(usr_donut_path):
 
@@ -1191,7 +1393,7 @@ def _build_pdf(
             )
         )
 
-        story.append(Spacer(1, 0.3 * cm))
+        story.append(Spacer(1, 0.08 * cm))
     else:
         story.append(Paragraph(
             "No GPU user consumption data available for this period.",
