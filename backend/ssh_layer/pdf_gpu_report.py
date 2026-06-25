@@ -25,7 +25,7 @@ import io
 import os
 import tempfile
 from datetime import datetime
-
+from zoneinfo import ZoneInfo
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -614,7 +614,7 @@ def generate_gpu_report(data: dict) -> bytes:
 
     start_str    = (period.get("start") or "")[:10] or "N/A"
     end_str      = (period.get("end")   or "")[:10] or "N/A"
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated_at = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M IST")
 
     # Styles
     s = {

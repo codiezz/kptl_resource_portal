@@ -226,7 +226,19 @@ def parse_account_utilization(raw: str) -> dict:
                     'hours':       used['hours'],
                     'percentage':  used['percentage'],
                 })
- 
+        for acct in result['accounts']:
+
+            if acct['hours'] is None:
+                acct['hours'] = sum(
+                    u.get('hours', 0)
+                    for u in acct['users']
+             )
+
+            if acct['percentage'] is None:
+                acct['percentage'] = sum(
+                    u.get('percentage', 0)
+                    for u in acct['users']
+            )
         result['accounts'].sort(key=lambda a: a['hours'] or 0, reverse=True)
         return result
  
@@ -362,7 +374,14 @@ def parse_gpu_account_utilization(raw: str) -> dict:
                     'login':       login,
                     'gpu_minutes': gpu_minutes
                 })
+        for acct in result['accounts']:
 
+            if acct['gpu_minutes'] is None:
+
+                acct['gpu_minutes'] = sum(
+                    u.get('gpu_minutes', 0)
+                    for u in acct['users']
+                )
         result['accounts'].sort(key=lambda a: a['gpu_minutes'] or 0, reverse=True)
         return result if result['accounts'] else {}
 
@@ -455,7 +474,14 @@ def parse_gpu_account_pct(raw: str) -> dict:
                     'login':   login,
                     'gpu_pct': gpu_pct
                 })
+        for acct in result['accounts']:
 
+            if acct['gpu_pct'] is None:
+
+                acct['gpu_pct'] = sum(
+                    u.get('gpu_pct', 0)
+                    for u in acct['users']
+            )
         result['accounts'].sort(key=lambda a: a['gpu_pct'] or 0, reverse=True)
         return result if result['accounts'] else {}
 
