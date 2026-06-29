@@ -1,5 +1,16 @@
 """Application configuration — replace hardcoded values with env/DB in production."""
+import os
 
+# --- MySQL connection settings ---
+# Override any of these via environment variables in production.
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = int(os.environ.get("DB_PORT", "3306"))
+DB_USER = os.environ.get("DB_USER", "hpc_app")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "pari123")
+DB_NAME = os.environ.get("DB_NAME", "hpc_portal")
+
+# Allowed email domain for registration (Phase 2)
+ALLOWED_EMAIL_DOMAIN = "@iiser.ac.in"
 SECRET_KEY = "hpc-portal-secret-key-change-in-prod"
 
 CORS_ORIGINS = ["http://localhost:5173"]
