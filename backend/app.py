@@ -24,6 +24,7 @@ from datetime import datetime
 from pdf_gpu_report import generate_gpu_report
 
 import config
+from auth import role_required
 from routes import auth_bp, clusters_bp, ssh_bp
 from ssh_layer.slurm_report_parser import (
     parse_tres_utilization,
@@ -388,9 +389,10 @@ def get_accounts_and_users(cluster_id):
     }), 200
 
 @app.route("/api/clusters/<cluster_id>/report/account", methods=["POST"])
+@role_required("ADMIN")
 def get_account_report(cluster_id):
-    if "user" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
+    # if "user" not in session:
+    #     return jsonify({"error": "Not authenticated"}), 401
     cluster = config.CLUSTERS.get(cluster_id)
     if not cluster:
         return jsonify({"error": f"Unknown cluster: {cluster_id}"}), 404
@@ -496,9 +498,10 @@ def get_account_report(cluster_id):
         download_name=f"account_report_{cluster_id}_{start}_to_{end}.pdf"
     )
 @app.route("/api/clusters/<cluster_id>/report/user", methods=["POST"])
+@role_required("ADMIN")
 def get_user_report(cluster_id):
-    if "user" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
+    # if "user" not in session:
+    #     return jsonify({"error": "Not authenticated"}), 401
 
     cluster = config.CLUSTERS.get(cluster_id)
     if not cluster:

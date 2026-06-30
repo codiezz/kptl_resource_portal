@@ -44,22 +44,27 @@ def register():
         "role": "USER",
     }), 201
 
-    
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     data = request.json or {}
 
-    username = data.get("username")
-    password = data.get("password")
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
 
-    user = config.USERS.get(username)
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
 
-    if user and user["password"] == password:
-        session["user"] = username
+    user = models.get_user_by_email(email)
+
+    if user and models.verify_password(password, user["password_hash"]):
+        session["user"] = user["email"]
         session["role"] = user["role"]
 
+        models.update_last_login(user["id"])
+
         return jsonify({
-            "username": username,
+            "username": user["email"],
             "role": user["role"],
         })
 

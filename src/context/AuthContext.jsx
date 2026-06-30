@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(username, password) {
-    const { ok, data } = await authApi.login(username, password);
+  async function login(email, password) {
+    const { ok, data } = await authApi.login(email, password);
 
     if (ok) {
       setUser(data.username);
@@ -32,7 +32,17 @@ export function AuthProvider({ children }) {
 
     return { ok: false, error: data?.error || "Login failed" };
   }
+  async function register(email, password) {
+    const { ok, data } = await authApi.register(email, password);
 
+    if (ok) {
+      setUser(data.username);
+      setRole(data.role);
+      return { ok: true };
+    }
+
+    return { ok: false, error: data?.error || "Registration failed" };
+  }
   async function logout() {
     await authApi.logout();
     setUser(null);
@@ -46,6 +56,7 @@ export function AuthProvider({ children }) {
         role,
         loading,
         login,
+        register,
         logout,
       }}
     >

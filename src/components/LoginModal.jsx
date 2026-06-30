@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 export default function LoginModal({ onClose, redirectTo }) {
   const { login }           = useAuth();
   const navigate            = useNavigate();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]   = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ export default function LoginModal({ onClose, redirectTo }) {
     setError("");
     setLoading(true);
 
-    const result = await login(username, password);
+    const result = await login(email, password);
 
     setLoading(false);
 
@@ -52,15 +52,15 @@ export default function LoginModal({ onClose, redirectTo }) {
 
         {/* form */}
         <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>Username</label>
+          <label style={styles.label}>Email</label>
           <input
             style={styles.input}
-            type="text"
+            type="email"
             autoFocus
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. admin"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="abc@iiser.ac.in"
             disabled={loading}
             required
           />
@@ -82,9 +82,6 @@ export default function LoginModal({ onClose, redirectTo }) {
           </button>
         </form>
 
-        <p style={styles.hint}>
-          Demo credentials: admin / admin123 &nbsp;·&nbsp; researcher / hpc2026
-        </p>
       </div>
     </div>
   );

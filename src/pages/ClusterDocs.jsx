@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
-
+import PermissionDeniedModal from "../components/PermissionDeniedModal";
 export default function ClusterDocs() {
   const { clusterId } = useParams();
 
@@ -9,6 +9,7 @@ export default function ClusterDocs() {
   const [endDate, setEndDate] = useState("");
   const [loadingType, setLoadingType] = useState(null);
   const [error, setError] = useState("");
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
 
   // === Account/User tree state ===
   const [showAccountTree, setShowAccountTree] = useState(false);
@@ -41,7 +42,11 @@ export default function ClusterDocs() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError("Failed to generate report. Please try again.");
+        if (err.response && err.response.status === 403) {
+          setShowPermissionModal(true);
+        } else {
+            setError("Failed to generate report. Please try again."); //  error handling
+    }
     } finally {
       setLoadingType(null);
     }
@@ -72,8 +77,12 @@ export default function ClusterDocs() {
       );
       setShowAccountTree(true);
     } catch (err) {
-      console.error("Failed to fetch accounts", err);
-      setError("Failed to load accounts.");
+        if (err.response && err.response.status === 403) {
+          setShowPermissionModal(true);
+      } else {
+          console.error("Failed to fetch accounts", err);
+          setError("Failed to load accounts.");
+        }
     } finally {
       setLoadingAccounts(false);
     }
@@ -110,7 +119,11 @@ export default function ClusterDocs() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Failed to download account report", err);
+      if (err.response && err.response.status === 403) {
+        setShowPermissionModal(true);
+      } else {
+        console.error("Failed to download account report", err);
+      }
     } finally {
       setDownloadingKey(null);
     }
@@ -138,7 +151,11 @@ export default function ClusterDocs() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      console.error("Failed to download user report", err);
+      if (err.response && err.response.status === 403) {
+        setShowPermissionModal(true);
+    } else {
+        console.error("Failed to download user report", err);
+      }
     } finally {
       setDownloadingKey(null);
     }
@@ -326,6 +343,10 @@ export default function ClusterDocs() {
           </div>
         </div>
       </div>
+      <PermissionDeniedModal
+    isOpen={showPermissionModal}
+    onClose={() => setShowPermissionModal(false)}
+/>
     </section>
   );
 }

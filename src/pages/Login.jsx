@@ -3,14 +3,27 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import image from "../components/image/images.png";
 
+const ALLOWED_EMAIL_DOMAIN = "@iiser.ac.in";
+const MIN_PASSWORD_LENGTH = 6;
+
 export default function Login() {
-  const { user, loading: authLoading, login } = useAuth();
+  const { user, loading: authLoading, login, register } = useAuth();
   const navigate = useNavigate();
 
-  const [username, setUsername] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  // --- Login form state ---
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // --- Registration form state ---
+  const [regEmail, setRegEmail] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regConfirmPassword, setRegConfirmPassword] = useState("");
+  const [regError, setRegError] = useState("");
+  const [regSubmitting, setRegSubmitting] = useState(false);
 
   // Already logged in → bounce straight to home, don't show login again
   if (!authLoading && user) {
@@ -22,7 +35,7 @@ export default function Login() {
     setError("");
     setSubmitting(true);
 
-    const result = await login(username, password);
+    const result = await login(email, password);
 
     setSubmitting(false);
 
@@ -31,6 +44,52 @@ export default function Login() {
     } else {
       setError(result.error);
     }
+  }
+
+  async function handleRegisterSubmit(e) {
+    e.preventDefault();
+    setRegError("");
+
+    // --- Frontend validation (backend is still the source of truth) ---
+    const normalizedEmail = regEmail.trim().toLowerCase();
+
+    if (!normalizedEmail.endsWith(ALLOWED_EMAIL_DOMAIN)) {
+      setRegError(`Email must end with ${ALLOWED_EMAIL_DOMAIN}`);
+      return;
+    }
+
+    if (regPassword.length < MIN_PASSWORD_LENGTH) {
+      setRegError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      return;
+    }
+
+    if (regPassword !== regConfirmPassword) {
+      setRegError("Passwords do not match");
+      return;
+    }
+
+    setRegSubmitting(true);
+
+    const result = await register(normalizedEmail, regPassword);
+
+    setRegSubmitting(false);
+
+    if (result.ok) {
+      // Backend already created the session — go straight to dashboard
+      navigate("/");
+    } else {
+      setRegError(result.error);
+    }
+  }
+
+  function switchToRegister() {
+    setError("");
+    setIsRegistering(true);
+  }
+
+  function switchToLogin() {
+    setRegError("");
+    setIsRegistering(false);
   }
 
   return (
@@ -50,48 +109,120 @@ export default function Login() {
         <div style={styles.divider} />
 
         <h1 style={styles.title}>High Performance Computing Portal</h1>
-        <p style={styles.subtitle}>Sign in to access the portal</p>
 
-        {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
+        {!isRegistering ? (
+          <>
+            <p style={styles.subtitle}>Sign in to access the portal</p>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>Username</label>
-          <input
-            style={styles.input}
-            type="text"
-            autoFocus
-            autoComplete="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. admin"
-            disabled={submitting}
-            required
-          />
+            {error && <div style={styles.errorBanner}>⚠️ {error}</div>}
 
-          <label style={styles.label}>Password</label>
-          <input
-            style={styles.input}
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            disabled={submitting}
-            required
-          />
+            <form onSubmit={handleSubmit} style={styles.form}>
+              <label style={styles.label}>Email</label>
+              <input
+                style={styles.input}
+                type="email"
+                autoFocus
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="abc@iiser.ac.in"
+                disabled={submitting}
+                required
+              />
 
-          <button
-            style={submitting ? styles.btnDisabled : styles.btn}
-            type="submit"
-            disabled={submitting}
-          >
-            {submitting ? "Signing in…" : "Sign In"}
-          </button>
-        </form>
+              <label style={styles.label}>Password</label>
+              <input
+                style={styles.input}
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={submitting}
+                required
+              />
 
-        <p style={styles.hint}>
-          Demo credentials: admin / admin123 &nbsp;·&nbsp; researcher / hpc2026
-        </p>
+              <button
+                style={submitting ? styles.btnDisabled : styles.btn}
+                type="submit"
+                disabled={submitting}
+              >
+                {submitting ? "Signing in…" : "Sign In"}
+              </button>
+            </form>
+
+            <p style={styles.hint}>
+              Sign in using your registered IISER email account.
+            </p>
+
+            <p style={styles.switchText}>
+              Don't have an account?{" "}
+              <span style={styles.switchLink} onClick={switchToRegister}>
+                Create Account
+              </span>
+            </p>
+          </>
+        ) : (
+          <>
+            <p style={styles.subtitle}>Create your IISER HPC Portal account</p>
+
+            {regError && <div style={styles.errorBanner}>⚠️ {regError}</div>}
+
+            <form onSubmit={handleRegisterSubmit} style={styles.form}>
+              <label style={styles.label}>IISER Email</label>
+              <input
+                style={styles.input}
+                type="email"
+                autoFocus
+                autoComplete="email"
+                value={regEmail}
+                onChange={(e) => setRegEmail(e.target.value)}
+                placeholder="abc@iiser.ac.in"
+                disabled={regSubmitting}
+                required
+              />
+
+              <label style={styles.label}>Password</label>
+              <input
+                style={styles.input}
+                type="password"
+                autoComplete="new-password"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={regSubmitting}
+                required
+              />
+
+              <label style={styles.label}>Confirm Password</label>
+              <input
+                style={styles.input}
+                type="password"
+                autoComplete="new-password"
+                value={regConfirmPassword}
+                onChange={(e) => setRegConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={regSubmitting}
+                required
+              />
+
+              <button
+                style={regSubmitting ? styles.btnDisabled : styles.btn}
+                type="submit"
+                disabled={regSubmitting}
+              >
+                {regSubmitting ? "Creating Account…" : "Create Account"}
+              </button>
+            </form>
+
+            <p style={styles.switchText}>
+              Already have an account?{" "}
+              <span style={styles.switchLink} onClick={switchToLogin}>
+                Sign In
+              </span>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
@@ -143,7 +274,7 @@ const styles = {
   instName: {
     fontSize: "16px",
     fontWeight: "750",
-    color: "#0056b3",
+    color: "#000000",
     letterSpacing: "0.3px",
   },
 
@@ -242,5 +373,19 @@ const styles = {
     lineHeight: "1.6",
     borderTop: "1px solid #efefef",
     paddingTop: "16px",
+  },
+
+  switchText: {
+    marginTop: "18px",
+    fontSize: "13.5px",
+    color: "#667085",
+    textAlign: "center",
+  },
+
+  switchLink: {
+    color: "#c1121f",
+    fontWeight: "700",
+    cursor: "pointer",
+    textDecoration: "underline",
   },
 };
