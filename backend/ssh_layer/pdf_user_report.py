@@ -17,6 +17,7 @@ from reportlab.platypus import (
     Paragraph, Spacer, Table, TableStyle,
     Image, HRFlowable, PageBreak
 )
+from cluster_metadata import build_node_description_section
 DARK_BLUE   = colors.HexColor("#1a3a5c")
 MID_BLUE    = colors.HexColor("#2c5f8a")
 LIGHT_BLUE  = colors.HexColor("#a8c8e8")
@@ -524,12 +525,15 @@ def _build_pdf(
     story.append(Paragraph("High Performance Computing Portal", s["title"]))
     story.append(Spacer(1, 0.15 * cm))
     story.append(Paragraph("Individual User Utilization Report", s["subtitle"]))
-    story.append(Spacer(1, 0.55 * cm))
+    story.append(Spacer(1, 0.25 * cm))
     asterisk_style = ParagraphStyle(
         "Asterisks", fontSize=11, fontName="Helvetica",
-        textColor=MID_GREY, alignment=TA_CENTER, spaceAfter=18
+        textColor=MID_GREY, alignment=TA_CENTER, spaceAfter=8
     )
     story.append(Paragraph("*&nbsp;&nbsp;&nbsp;*&nbsp;&nbsp;&nbsp;*", asterisk_style))
+    story.extend(
+    build_node_description_section(cluster, cw)
+)
     # Report Particulars header bar
     particulars_header = Table([["REPORT PARTICULARS"]], colWidths=[cw])
     particulars_header.setStyle(TableStyle([

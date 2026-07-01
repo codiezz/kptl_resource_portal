@@ -17,6 +17,9 @@ export default function ClusterDocs() {
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [downloadingKey, setDownloadingKey] = useState(null); // "account:acct1" or "user:acct1:user1"
 
+  // === Single source of truth: is ANY report action in flight ===
+  const isBusy = loadingType !== null || loadingAccounts || downloadingKey !== null;
+
   const handleGenerateReport = async (reportType) => {
     if (!startDate || !endDate) {
       setError("Please select both start and end dates.");
@@ -99,6 +102,7 @@ export default function ClusterDocs() {
 
   // === Download an account-level PDF ===
   const downloadAccountReport = async (accountName) => {
+    if (isBusy) return;
     const key = `account:${accountName}`;
     setDownloadingKey(key);
     try {
@@ -131,6 +135,7 @@ export default function ClusterDocs() {
 
   // === Download a user-level PDF ===
   const downloadUserReport = async (accountName, userLogin) => {
+    if (isBusy) return;
     const key = `user:${accountName}:${userLogin}`;
     setDownloadingKey(key);
     try {
@@ -205,7 +210,7 @@ export default function ClusterDocs() {
               { type: "gpu", label: "GPU Report", enabled: true },
             ].map(({ type, label, enabled }) => {
               const isLoading = loadingType === type;
-              const isDisabled = !enabled || loadingType !== null;
+              const isDisabled = !enabled || isBusy;
               return (
                 <button
                   key={type}
@@ -214,7 +219,7 @@ export default function ClusterDocs() {
                     opacity: !enabled ? 0.4 : isDisabled ? 0.7 : 1,
                     cursor: isDisabled ? "not-allowed" : "pointer",
                   }}
-                  onClick={() => enabled && handleGenerateReport(type)}
+                  onClick={() => enabled && !isBusy && handleGenerateReport(type)}
                   disabled={isDisabled}
                   title={!enabled ? "Not yet available" : undefined}
                 >
@@ -226,9 +231,14 @@ export default function ClusterDocs() {
             {/* === ACCOUNT REPORT TREE (replaces old User Report + Account Report buttons) === */}
             <div style={{ position: "relative" }}>
               <button
-                onClick={handleAccountReportClick}
-                disabled={loadingAccounts}
-                style={{ ...styles.button, width: "100%" }}
+                onClick={() => !isBusy && handleAccountReportClick()}
+                disabled={isBusy}
+                style={{
+                  ...styles.button,
+                  width: "100%",
+                  opacity: isBusy ? 0.7 : 1,
+                  cursor: isBusy ? "not-allowed" : "pointer",
+                }}
               >
                 {loadingAccounts ? "Loading..." : "Account Report"}
               </button>
@@ -258,12 +268,13 @@ export default function ClusterDocs() {
                             display: "flex",
                             alignItems: "center",
                             padding: "10px 12px",
+                            opacity: isBusy ? 0.5 : 1,
                           }}
                         >
                           <span
-                            onClick={() => toggleAccountExpand(acct.name)}
+                            onClick={() => !isBusy && toggleAccountExpand(acct.name)}
                             style={{
-                              cursor: "pointer",
+                              cursor: isBusy ? "not-allowed" : "pointer",
                               width: "20px",
                               display: "inline-block",
                               fontSize: "12px",
@@ -275,10 +286,10 @@ export default function ClusterDocs() {
                           </span>
 
                           <span
-                            onClick={() => downloadAccountReport(acct.name)}
+                            onClick={() => !isBusy && downloadAccountReport(acct.name)}
                             style={{
                               flex: 1,
-                              cursor: "pointer",
+                              cursor: isBusy ? "not-allowed" : "pointer",
                               fontSize: "14px",
                               fontWeight: 500,
                               color: "#1a1a1a",
@@ -305,7 +316,7 @@ export default function ClusterDocs() {
                               acct.users.map((user) => (
                                 <div
                                   key={user}
-                                  onClick={() => downloadUserReport(acct.name, user)}
+                                  onClick={() => !isBusy && downloadUserReport(acct.name, user)}
                                   style={{
                                     display: "flex",
                                     justifyContent: "space-between",
@@ -313,11 +324,12 @@ export default function ClusterDocs() {
                                     padding: "6px 8px",
                                     fontSize: "13px",
                                     color: "#444",
-                                    cursor: "pointer",
+                                    cursor: isBusy ? "not-allowed" : "pointer",
                                     borderRadius: "6px",
+                                    opacity: isBusy ? 0.5 : 1,
                                   }}
                                   onMouseEnter={(e) =>
-                                    (e.currentTarget.style.background = "#f7f7f7")
+                                    !isBusy && (e.currentTarget.style.background = "#f7f7f7")
                                   }
                                   onMouseLeave={(e) =>
                                     (e.currentTarget.style.background = "transparent")
