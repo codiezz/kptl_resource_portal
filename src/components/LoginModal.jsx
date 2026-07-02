@@ -60,7 +60,7 @@ export default function LoginModal({ onClose, redirectTo }) {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="abc@iiser.ac.in"
+            placeholder="abc@iiserpune.ac.in"
             disabled={loading}
             required
           />

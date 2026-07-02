@@ -10,7 +10,7 @@ DB_PASSWORD = os.environ.get("DB_PASSWORD", "pari123")
 DB_NAME = os.environ.get("DB_NAME", "hpc_portal")
 
 # Allowed email domain for registration (Phase 2)
-ALLOWED_EMAIL_DOMAIN = "@iiser.ac.in"
+ALLOWED_EMAIL_DOMAIN = "@iiserpune.ac.in"
 SECRET_KEY = "hpc-portal-secret-key-change-in-prod"
 
 CORS_ORIGINS = ["http://localhost:5173"]

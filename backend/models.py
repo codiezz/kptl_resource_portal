@@ -12,8 +12,9 @@ bcrypt is introduced later, only this one function needs to change.
 """
 
 from database import get_connection
+import bcrypt
 
-
+# REPLACE create_user
 def create_user(email, password, role="USER"):
     """
     Insert a new user. Returns the new user's id.
@@ -22,6 +23,11 @@ def create_user(email, password, role="USER"):
     (enforced by the UNIQUE constraint on users.email) — callers should
     catch this and turn it into a friendly "email already registered" response.
     """
+    password_hash = bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
+
     conn = get_connection()
     try:
         with conn.cursor() as cursor:
@@ -30,12 +36,11 @@ def create_user(email, password, role="USER"):
                 INSERT INTO users (email, password_hash, role)
                 VALUES (%s, %s, %s)
                 """,
-                (email, password, role),
+                (email, password_hash, role),
             )
             return cursor.lastrowid
     finally:
         conn.close()
-
 
 def get_user_by_email(email):
     """Return the user row (dict) for this email, or None if not found."""
@@ -78,12 +83,13 @@ def update_last_login(user_id):
         conn.close()
 
 
+# REPLACE verify_password
 def verify_password(plain_password, stored_password_hash):
     """
-    Check a plaintext password against the stored value.
-
-    Placeholder implementation: plain string comparison. This is the
-    ONLY place that needs to change when bcrypt is introduced — swap
-    the body for bcrypt.checkpw(...) and every caller keeps working.
+    Check a plaintext password against the stored bcrypt hash.
+    bcrypt.checkpw handles the salt extraction internally.
     """
-    return plain_password == stored_password_hash
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        stored_password_hash.encode("utf-8")
+    )

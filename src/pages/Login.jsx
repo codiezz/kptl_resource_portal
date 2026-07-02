@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import image from "../components/image/images.png";
 
-const ALLOWED_EMAIL_DOMAIN = "@iiser.ac.in";
+const ALLOWED_EMAIL_DOMAIN = "@iiserpune.ac.in";
 const MIN_PASSWORD_LENGTH = 6;
 
 export default function Login() {
@@ -125,7 +125,7 @@ export default function Login() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="abc@iiser.ac.in"
+                placeholder="abc@iiserpune.ac.in"
                 disabled={submitting}
                 required
               />
@@ -177,7 +177,7 @@ export default function Login() {
                 autoComplete="email"
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
-                placeholder="abc@iiser.ac.in"
+                placeholder="abc@iiserpune.ac.in"
                 disabled={regSubmitting}
                 required
               />
