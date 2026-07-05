@@ -51,7 +51,7 @@ function UserDashboard({
         {/* Welcome */}
         <div style={styles.welcomeSection}>
           <h1 style={styles.welcomeTitle}>
-            Welcome back, {user}
+            Welcome back, {user?.split("@")[0]}
           </h1>
 
           <p style={styles.welcomeText}>
@@ -176,7 +176,7 @@ function UserDashboard({
             </div>
 
             <span style={styles.online}>
-              ● Healthy
+              ● Online
             </span>
           </div>
         </div>
@@ -211,7 +211,7 @@ function AdminDashboard({
 
         <div style={styles.welcomeSection}>
           <h1 style={styles.welcomeTitle}>
-            Welcome back, {user}
+            Welcome back, {user?.split("@")[0]}
           </h1>
 
           <p style={styles.welcomeText}>
@@ -323,7 +323,7 @@ function AdminDashboard({
             <span
               style={styles.online}
             >
-              ● Healthy
+              ● Online
             </span>
           </div>
         </div>

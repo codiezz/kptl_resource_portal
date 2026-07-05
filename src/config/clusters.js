@@ -6,5 +6,5 @@ export function clusterStatusPath(clusterId = DEFAULT_CLUSTER_ID) {
 }
 
 export function clusterDocsPath(clusterId = DEFAULT_CLUSTER_ID) {
-  return `/cluster/${clusterId}/docs`;
+  return `/cluster/${clusterId}/reports`;
 }
