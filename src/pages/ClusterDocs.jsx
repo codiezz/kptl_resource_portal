@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
 import PermissionDeniedModal from "../components/PermissionDeniedModal";
+import { API_BASE } from "../api/client";
 export default function ClusterDocs() {
   const { clusterId } = useParams();
 
@@ -29,7 +30,7 @@ export default function ClusterDocs() {
     setLoadingType(reportType);
     try {
       const response = await axios.post(
-        `http://localhost:5000/api/clusters/${clusterId}/report/${reportType}`,
+        `${API_BASE}/api/clusters/${clusterId}/report/${reportType}`,
         { start: startDate, end: endDate },
         { withCredentials: true, responseType: "blob" }
       );
@@ -66,7 +67,7 @@ export default function ClusterDocs() {
     setLoadingAccounts(true);
     try {
       const res = await axios.post(
-        `http://localhost:5000/api/clusters/${clusterId}/report/accounts`,
+        `${API_BASE}/api/clusters/${clusterId}/report/accounts`,
         { start: startDate, end: endDate },
         { withCredentials: true }
       );
@@ -107,7 +108,7 @@ export default function ClusterDocs() {
     setDownloadingKey(key);
     try {
       const res = await axios.post(
-        `http://localhost:5000/api/clusters/${clusterId}/report/account`,
+        `${API_BASE}/api/clusters/${clusterId}/report/account`,
         { start: startDate, end: endDate, account: accountName },
         { responseType: "blob", withCredentials: true }
       );
@@ -140,7 +141,7 @@ export default function ClusterDocs() {
     setDownloadingKey(key);
     try {
       const res = await axios.post(
-        `http://localhost:5000/api/clusters/${clusterId}/report/user`,
+        `${API_BASE}/api/clusters/${clusterId}/report/user`,
         { start: startDate, end: endDate, account: accountName, user: userLogin },
         { responseType: "blob", withCredentials: true }
       );
