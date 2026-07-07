@@ -13,7 +13,7 @@ DB_NAME = os.environ.get("DB_NAME", "hpc_portal")
 ALLOWED_EMAIL_DOMAIN = "@iiserpune.ac.in"
 SECRET_KEY = "hpc-portal-secret-key-change-in-prod"
 
-CORS_ORIGINS = ["http://localhost:5173"]
+CORS_ORIGINS = ["http://localhost:5173","http://127.0.0.1:5173",]
 
 USERS = {
     "admin": {
