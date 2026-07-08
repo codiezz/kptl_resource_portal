@@ -6,14 +6,20 @@ import os
 DB_HOST = os.environ.get("DB_HOST", "localhost")
 DB_PORT = int(os.environ.get("DB_PORT", "3306"))
 DB_USER = os.environ.get("DB_USER", "hpc_app")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "pari123")
+DB_PASSWORD = os.environ.get("DB_PASSWORD") or "pari123"
 DB_NAME = os.environ.get("DB_NAME", "hpc_portal")
 
 # Allowed email domain for registration (Phase 2)
 ALLOWED_EMAIL_DOMAIN = "@iiserpune.ac.in"
-SECRET_KEY = "hpc-portal-secret-key-change-in-prod"
+SECRET_KEY = os.environ.get(
+    "SECRET_KEY",
+    "hpc-portal-secret-key-change-in-prod"
+)
 
-CORS_ORIGINS = ["http://localhost:5173","http://127.0.0.1:5173",]
+CORS_ORIGINS = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173"
+).split(",")
 
 USERS = {
     "admin": {
